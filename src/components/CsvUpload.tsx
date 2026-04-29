@@ -5,31 +5,55 @@ import { DataService } from '../services/DataService';
 
 export default function CsvUpload() {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [status, setStatus] = React.useState<'idle' | 'uploading' | 'success'>('idle');
+  const [status, setStatus] = React.useState<'idle' | 'uploading' | 'success' | 'error'>('idle');
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
+    // File size limit: 200MB
+    const MAX_FILE_SIZE = 200 * 1024 * 1024;
+    if (file.size > MAX_FILE_SIZE) {
+      alert(`O arquivo excede o limite de tamanho permitido (200MB). Tamanho do arquivo: ${(file.size / 1024 / 1024).toFixed(2)}MB`);
+      return;
+    }
+
     setStatus('uploading');
     const reader = new FileReader();
+    
+    // Otimização para arquivos grandes
     reader.onload = async (e) => {
-      const text = e.target?.result as string;
-      const data = DataService.parseCSV(text);
-      try {
-        await DataService.saveData(data, file.name);
-        setStatus('success');
-      } catch (error) {
-        console.error('Erro no upload:', error);
-        setStatus('error');
-      } finally {
-        setTimeout(() => {
-          setStatus('idle');
-          window.location.reload();
-        }, 3000);
-      }
+      // Usando requestAnimationFrame para não travar a UI imediatamente
+      requestAnimationFrame(async () => {
+        const text = e.target?.result as string;
+        console.log("Arquivo carregado na memória, iniciando parse...");
+        
+        try {
+            // Em arquivos muito grandes (150mb+), o parseCSV pode travar a thread
+            // O ideal seria usar WebWorkers, mas para manter a compatibilidade
+            // vamos fazer de forma síncrona, avisando que pode demorar
+            const data = DataService.parseCSV(text);
+            console.log(`Parse concluído: ${data.length} registros encontrados. Iniciando salvamento...`);
+            
+            await DataService.saveData(data, file.name);
+            setStatus('success');
+        } catch (error) {
+            console.error('Erro no upload/processamento:', error);
+            setStatus('error');
+            alert("Erro ao processar o arquivo. Verifique o console para mais detalhes.");
+        } finally {
+            setTimeout(() => {
+                setStatus('idle');
+                window.location.reload();
+            }, 3000);
+        }
+      });
     };
-    reader.readAsText(file);
+    
+    // Mostra indicador de loading imediatamente antes do browser começar a ler o arquivo pesadão
+    setTimeout(() => {
+        reader.readAsText(file);
+    }, 100);
   };
 
   return (
@@ -52,7 +76,7 @@ export default function CsvUpload() {
           </div>
           <div className="text-center">
             <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">Upload Base de Dados (CSV)</p>
-            <p className="text-xs text-slate-500 mt-1">Clique para selecionar o arquivo</p>
+            <p className="text-xs text-slate-500 mt-1">Clique para selecionar o arquivo (Máx: 200MB)</p>
           </div>
         </button>
       )}

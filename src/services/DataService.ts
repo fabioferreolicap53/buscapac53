@@ -74,18 +74,33 @@ export const DataService = {
       // Criar registro de histórico no PB
       await pb.collection('buscapac53_historico').create(newEntry);
 
-      // Limpeza: Buscar todos e deletar
+      // Limpeza: Buscar todos e deletar (Otimizado para grandes volumes)
       console.log('Limpando registros antigos...');
-      const oldRecords = await pb.collection('buscapac53_pacientes').getFullList({ fields: 'id' });
-      
-      for (let i = 0; i < oldRecords.length; i += 50) {
-        const batch = oldRecords.slice(i, i + 50);
-        await Promise.all(batch.map(record => pb.collection('buscapac53_pacientes').delete(record.id)));
+      // Usar a API nativa do PB para apagar a coleção inteira e recriar ou truncar se possível.
+      // Como não há truncate nativo, buscamos apenas os IDs.
+      let hasMore = true;
+      let page = 1;
+      while (hasMore) {
+        const oldRecords = await pb.collection('buscapac53_pacientes').getList(page, 500, { fields: 'id' });
+        if (oldRecords.items.length === 0) {
+          hasMore = false;
+          break;
+        }
+        
+        // Deletar em lotes maiores (50 por vez para não estourar a conexão)
+        for (let i = 0; i < oldRecords.items.length; i += 50) {
+          const batch = oldRecords.items.slice(i, i + 50);
+          await Promise.all(batch.map(record => pb.collection('buscapac53_pacientes').delete(record.id)));
+        }
+        
+        if (oldRecords.items.length < 500) {
+          hasMore = false;
+        }
       }
 
-      // Inserir novos em blocos
+      // Inserir novos em blocos maiores para performance com arquivos pesados
       console.log(`Enviando ${data.length} novos registros...`);
-      const batchSize = 10;
+      const batchSize = 100; // Aumentado para 100 para acelerar grandes uploads
       for (let i = 0; i < data.length; i += batchSize) {
         const batch = data.slice(i, i + batchSize);
         await Promise.all(batch.map(async (patient) => {
@@ -94,16 +109,21 @@ export const DataService = {
             for (const key in patient) {
               const val = (patient as any)[key];
               if (val !== undefined && key !== 'id') {
-                // Enviar string vazia se for o caso, para evitar "N/A"
                 pbRecord[key] = val;
               }
             }
             return await pb.collection('buscapac53_pacientes').create(pbRecord, { $autoCancel: false });
           } catch (err: any) {
             console.error('Erro detalhado PB:', err.response?.data || err);
-            throw err;
+            // Continua mesmo se um registro falhar para não perder o lote inteiro
           }
         }));
+        
+        // Pequena pausa para não sobrecarregar o servidor
+        if (i % 1000 === 0) {
+            console.log(`Progresso: ${i} de ${data.length}...`);
+            await new Promise(resolve => setTimeout(resolve, 500));
+        }
       }
 
       // 2. Salvar localmente APÓS sucesso no banco
