@@ -118,17 +118,33 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
             <div className="space-y-4">
               {history.length > 0 ? (
                 history.map((item, i) => (
-                  <div key={i} className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex flex-col gap-2">
+                  <div key={i} className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex flex-col gap-3 group hover:border-blue-200 transition-colors">
                     <div className="flex items-center justify-between">
-                      <p className="text-xs font-bold text-slate-800 truncate max-w-[150px]">{item.fileName}</p>
-                      <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded border border-green-200 font-bold">SUCESSO</span>
-                    </div>
-                    <div className="flex items-center justify-between text-[10px] text-slate-400">
-                      <div className="flex items-center gap-1">
-                        <Clock size={10} />
-                        {item.date}
+                      <div className="flex flex-col">
+                        <span className="text-[8px] font-black text-blue-500 uppercase tracking-widest leading-none mb-1">Competência</span>
+                        <p className="text-sm font-black text-slate-800 tracking-tight">
+                          {(() => {
+                            const [datePart] = item.date.split(' ');
+                            const [day, month, year] = datePart.split('/');
+                            const months = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
+                            return `${months[parseInt(month) - 1]} / ${year}`;
+                          })()}
+                        </p>
                       </div>
-                      <p>{item.count.toLocaleString()} registros</p>
+                      <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded border border-green-200 font-black tracking-widest">OK</span>
+                    </div>
+                    
+                    <div className="h-[1px] w-full bg-slate-200/50" />
+
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-[10px]">
+                        <p className="font-bold text-slate-500 truncate max-w-[140px]">{item.fileName}</p>
+                        <p className="font-black text-[#001f3f]">{item.count.toLocaleString()} <span className="text-slate-400 font-bold">LINHAS</span></p>
+                      </div>
+                      <div className="flex items-center gap-2 text-[9px] text-slate-400 font-bold">
+                        <Clock size={10} className="text-slate-300" />
+                        SINCRO EM {item.date}
+                      </div>
                     </div>
                   </div>
                 ))

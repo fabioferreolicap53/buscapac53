@@ -15,31 +15,50 @@ export default function SearchModule() {
     
     setLoading(true);
     try {
+      let finalResults: PatientData[] = [];
+      
       // Tentar busca remota primeiro (PocketBase)
       const remoteResults = await DataService.searchRemote(searchTerm, activeTab);
       
       if (remoteResults.length > 0) {
-        setResults(remoteResults);
+        finalResults = remoteResults;
       } else {
         // Fallback para local se remoto falhar ou estiver vazio
         const data = DataService.getData();
-        const filtered = data.filter(p => {
+        finalResults = data.filter(p => {
           if (activeTab === 'name') {
             return p.NOME_DA_PESSOA_CADASTRADA.toLowerCase().includes(searchTerm.toLowerCase());
           } else {
             return p.N_CNS_DA_PESSOA_CADASTRADA.includes(searchTerm);
           }
         });
-
-        // Ordenar por data de atualização decrescente
-        const sorted = filtered.sort((a, b) => {
-          const dateA = a.DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO.split('/').reverse().join('');
-          const dateB = b.DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO.split('/').reverse().join('');
-          return dateB.localeCompare(dateA);
-        });
-
-        setResults(sorted);
       }
+
+      // Ordenação unificada: Nome da Mãe (alfabético) e depois Data de Atualização (decrescente)
+      const sorted = finalResults.sort((a, b) => {
+        // Primeiro critério: Nome da Mãe
+        const maeA = (a.NOME_DA_MAE_PESSOA_CADASTRADA || '').toLowerCase();
+        const maeB = (b.NOME_DA_MAE_PESSOA_CADASTRADA || '').toLowerCase();
+        
+        if (maeA !== maeB) {
+          return maeA.localeCompare(maeB);
+        }
+
+        // Segundo critério: Data de Atualização Decrescente (YYYYMMDD)
+        const formatSortDate = (d: string) => {
+          if (!d || !d.includes('/')) return '00000000';
+          const parts = d.split('/');
+          if (parts.length !== 3) return '00000000';
+          return parts[2] + parts[1] + parts[0]; // YYYY + MM + DD
+        };
+
+        const dateA = formatSortDate(a.DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO);
+        const dateB = formatSortDate(b.DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO);
+        
+        return dateB.localeCompare(dateA);
+      });
+
+      setResults(sorted);
     } catch (error) {
       console.error('Erro na busca:', error);
     } finally {

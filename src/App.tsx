@@ -1,4 +1,4 @@
-import { Clock, Sparkles } from 'lucide-react';
+import { Clock, Sparkles, X } from 'lucide-react';
 import { useState } from 'react';
 import TopNavBar from './components/TopNavBar';
 import SearchModule from './components/SearchModule';
@@ -7,11 +7,77 @@ import { DataService } from './services/DataService';
 
 export default function App() {
   const [view, setView] = useState<'search' | 'settings'>('search');
+  const [showLogin, setShowLogin] = useState(false);
+  const [loginForm, setLoginForm] = useState({ user: '', pass: '' });
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (loginForm.user === 'daps.cap53@gmail.com' && loginForm.pass === 'daps2022') {
+      setShowLogin(false);
+      setView('settings');
+      setLoginForm({ user: '', pass: '' });
+    } else {
+      alert('Acesso negado.');
+    }
+  };
+
   const lastUpdate = DataService.getLastUpdate();
 
   return (
     <div className="min-h-screen bg-slate-50 font-manrope selection:bg-blue-100 selection:text-blue-900 overflow-x-hidden">
-      <TopNavBar onSettingsClick={() => setView('settings')} />
+      <TopNavBar onSettingsClick={() => setShowLogin(true)} />
+
+      {showLogin && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4 animate-in fade-in duration-300">
+          <div className="bg-white w-full max-w-md rounded-[2rem] p-8 shadow-2xl border border-slate-100 relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-1.5 bg-[#001f3f]" />
+            
+            <button 
+              onClick={() => setShowLogin(false)}
+              className="absolute top-6 right-6 p-2 text-slate-400 hover:text-red-500 transition-colors"
+            >
+              <X size={20} />
+            </button>
+
+            <div className="mb-8">
+              <h2 className="text-2xl font-black text-slate-900 tracking-tight">Acesso Restrito</h2>
+              <p className="text-sm text-slate-500 font-medium">Identifique-se para acessar as configurações.</p>
+            </div>
+
+            <form onSubmit={handleLogin} className="space-y-5">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Usuário</label>
+                <input
+                  autoFocus
+                  type="email"
+                  value={loginForm.user}
+                  onChange={e => setLoginForm(prev => ({ ...prev, user: e.target.value }))}
+                  className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-xl outline-none focus:border-blue-200 focus:bg-white transition-all text-sm"
+                  placeholder="seu@email.com"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Senha</label>
+                <input
+                  type="password"
+                  value={loginForm.pass}
+                  onChange={e => setLoginForm(prev => ({ ...prev, pass: e.target.value }))}
+                  className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-xl outline-none focus:border-blue-200 focus:bg-white transition-all text-sm"
+                  placeholder="••••••••"
+                  required
+                />
+              </div>
+              <button
+                type="submit"
+                className="w-full bg-[#001f3f] text-white py-4 rounded-xl font-black text-xs tracking-widest hover:scale-[1.02] active:scale-95 transition-all shadow-lg shadow-blue-900/20"
+              >
+                ENTRAR
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
 
       <main className="pt-24 sm:pt-32 pb-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
@@ -28,8 +94,8 @@ export default function App() {
                   </h1>
                   
                   <p className="text-sm sm:text-base font-medium text-slate-500 leading-relaxed max-w-xl mx-auto">
-                     Localize pacientes do território da AP5.3 de forma rápida e segura.
-                     <span className="block text-xs sm:text-sm text-slate-400 mt-1 font-normal italic">Use nome completo ou o número do CNS.</span>
+                     Localize pacientes do território da AP5.3 de forma rápida.
+                     <span className="block text-xs sm:text-sm text-slate-400 mt-1 font-normal italic">Use o nome ou o número do CNS.</span>
                    </p>
                 </div>
               </div>

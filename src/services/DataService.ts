@@ -156,7 +156,7 @@ export const DataService = {
         
       const records = await pb.collection('buscapac53_pacientes').getList(1, 50, {
         filter: filter,
-        sort: '-DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO',
+        sort: 'NOME_DA_MAE_PESSOA_CADASTRADA,-DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO',
         $autoCancel: false
       });
       
