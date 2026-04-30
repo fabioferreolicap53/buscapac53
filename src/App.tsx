@@ -1,14 +1,19 @@
-import { Clock, Sparkles, X, Shield, ArrowRight } from 'lucide-react';
+import { Clock, Sparkles, X, Shield, ArrowRight, Eye, EyeOff } from 'lucide-react';
 import { useState } from 'react';
 import TopNavBar from './components/TopNavBar';
 import SearchModule from './components/SearchModule';
 import SettingsPage from './components/SettingsPage';
 import { DataService } from './services/DataService';
 
+const AUTH_KEY = 'buscapac_auth';
+
 export default function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    return localStorage.getItem(AUTH_KEY) === 'true';
+  });
   const [globalLoginForm, setGlobalLoginForm] = useState({ user: '', pass: '' });
   const [loginError, setLoginError] = useState('');
+  const [showPass, setShowPass] = useState(false);
 
   const [view, setView] = useState<'search' | 'settings'>('search');
   const [showLogin, setShowLogin] = useState(false);
@@ -23,10 +28,19 @@ export default function App() {
 
     if (isValid) {
       setIsAuthenticated(true);
+      localStorage.setItem(AUTH_KEY, 'true');
       setLoginError('');
+      setGlobalLoginForm({ user: '', pass: '' });
     } else {
       setLoginError('Credenciais inválidas. Verifique e tente novamente.');
     }
+  };
+
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    localStorage.removeItem(AUTH_KEY);
+    setView('search');
+    setShowLogin(false);
   };
 
   const handleLogin = (e: React.FormEvent) => {
@@ -66,28 +80,59 @@ export default function App() {
                 {loginError}
               </div>
             )}
-            <div className="space-y-2">
+             <div className="space-y-2">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">E-mail Institucional</label>
-              <input
-                autoFocus
-                type="email"
-                value={globalLoginForm.user}
-                onChange={e => setGlobalLoginForm(prev => ({ ...prev, user: e.target.value }))}
-                className="w-full px-5 py-4 bg-white/50 border border-slate-200 rounded-xl outline-none focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-400/10 transition-all text-sm font-bold text-slate-800 placeholder:text-slate-300"
-                placeholder="usuario@gmail.com"
-                required
-              />
+              <div className="relative group/field">
+                <input
+                  autoFocus
+                  type="email"
+                  value={globalLoginForm.user}
+                  onChange={e => setGlobalLoginForm(prev => ({ ...prev, user: e.target.value }))}
+                  className="w-full px-5 py-4 bg-white/50 border border-slate-200 rounded-xl outline-none focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-400/10 transition-all text-sm font-bold text-slate-800 placeholder:text-slate-300"
+                  placeholder="usuario@gmail.com"
+                  required
+                />
+                {globalLoginForm.user && (
+                  <button
+                    type="button"
+                    onClick={() => setGlobalLoginForm(prev => ({ ...prev, user: '' }))}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 p-1 text-slate-300 hover:text-red-400 transition-colors"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
             </div>
             <div className="space-y-2">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Senha de Acesso</label>
-              <input
-                type="password"
-                value={globalLoginForm.pass}
-                onChange={e => setGlobalLoginForm(prev => ({ ...prev, pass: e.target.value }))}
-                className="w-full px-5 py-4 bg-white/50 border border-slate-200 rounded-xl outline-none focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-400/10 transition-all text-sm font-bold text-slate-800 placeholder:text-slate-300"
-                placeholder="••••••••"
-                required
-              />
+              <div className="relative group/field">
+                <input
+                  type={showPass ? 'text' : 'password'}
+                  value={globalLoginForm.pass}
+                  onChange={e => setGlobalLoginForm(prev => ({ ...prev, pass: e.target.value }))}
+                  className="w-full px-5 py-4 bg-white/50 border border-slate-200 rounded-xl outline-none focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-400/10 transition-all text-sm font-bold text-slate-800 placeholder:text-slate-300 pr-12"
+                  placeholder="••••••••"
+                  required
+                />
+                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                  {globalLoginForm.pass && (
+                    <button
+                      type="button"
+                      onClick={() => setGlobalLoginForm(prev => ({ ...prev, pass: '' }))}
+                      className="p-1.5 text-slate-300 hover:text-red-400 transition-colors"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setShowPass(!showPass)}
+                    className="p-1.5 text-slate-300 hover:text-blue-500 transition-colors"
+                  >
+                    {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+              </div>
             </div>
             <button
               type="submit"
@@ -110,7 +155,10 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 font-manrope selection:bg-blue-100 selection:text-blue-900 overflow-x-hidden">
-      <TopNavBar onSettingsClick={() => setShowLogin(true)} />
+      <TopNavBar 
+        onSettingsClick={() => setShowLogin(true)} 
+        onLogoutClick={handleLogout}
+      />
 
       {showLogin && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4 animate-in fade-in duration-300">
