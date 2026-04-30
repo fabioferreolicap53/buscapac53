@@ -127,7 +127,7 @@ export default function SearchModule() {
                 {loading ? (
                   <div className="w-5 h-5 border-2 border-[#001f3f]/20 border-t-[#001f3f] rounded-full animate-spin" />
                 ) : (
-                  <Search className="text-slate-200 group-focus-within/input:text-[#001f3f] transition-colors" size={20} />
+                  <Search className="text-slate-400 group-focus-within/input:text-blue-500 transition-colors" size={20} />
                 )}
               </div>
               <input
@@ -135,7 +135,7 @@ export default function SearchModule() {
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                 disabled={loading}
-                className="w-full pl-12 sm:pl-14 pr-10 sm:pr-12 py-4 sm:py-5 bg-slate-50/50 border border-slate-100 focus:border-blue-200 focus:bg-white rounded-xl sm:rounded-2xl font-manrope text-sm sm:text-base text-slate-800 outline-none transition-all placeholder:text-slate-300 disabled:cursor-not-allowed"
+                className="w-full pl-12 sm:pl-14 pr-10 sm:pr-12 py-4 sm:py-5 bg-white border-2 border-slate-200 focus:border-blue-500 rounded-xl sm:rounded-2xl font-manrope text-sm sm:text-base text-slate-800 outline-none transition-all placeholder:text-slate-400 disabled:cursor-not-allowed shadow-sm focus:shadow-md focus:shadow-blue-500/10"
                 spellCheck="false"
                 autoComplete="off"
                 autoCorrect="off"
