@@ -156,7 +156,8 @@ export const DataService = {
         
       const records = await pb.collection('buscapac53_pacientes').getList(1, 50, {
         filter: filter,
-        sort: '-DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO'
+        sort: '-DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO',
+        $autoCancel: false
       });
       
       // Manter chaves como vêm do PB (assumindo que estão MAIÚSCULAS agora)

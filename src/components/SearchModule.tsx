@@ -7,49 +7,59 @@ export default function SearchModule() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<PatientData[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const handleSearch = async () => {
-    if (!query.trim()) return;
+    const searchTerm = query.trim();
+    if (!searchTerm) return;
     
-    // Tentar busca remota primeiro (PocketBase)
-    const remoteResults = await DataService.searchRemote(query, activeTab);
-    
-    if (remoteResults.length > 0) {
-      setResults(remoteResults);
-    } else {
-      // Fallback para local se remoto falhar ou estiver vazio
-      const data = DataService.getData();
-      const filtered = data.filter(p => {
-        if (activeTab === 'name') {
-          return p.NOME_DA_PESSOA_CADASTRADA.toLowerCase().includes(query.toLowerCase());
-        } else {
-          return p.N_CNS_DA_PESSOA_CADASTRADA.includes(query);
-        }
-      });
+    setLoading(true);
+    try {
+      // Tentar busca remota primeiro (PocketBase)
+      const remoteResults = await DataService.searchRemote(searchTerm, activeTab);
+      
+      if (remoteResults.length > 0) {
+        setResults(remoteResults);
+      } else {
+        // Fallback para local se remoto falhar ou estiver vazio
+        const data = DataService.getData();
+        const filtered = data.filter(p => {
+          if (activeTab === 'name') {
+            return p.NOME_DA_PESSOA_CADASTRADA.toLowerCase().includes(searchTerm.toLowerCase());
+          } else {
+            return p.N_CNS_DA_PESSOA_CADASTRADA.includes(searchTerm);
+          }
+        });
 
-      // Ordenar por data de atualização decrescente
-      const sorted = filtered.sort((a, b) => {
-        const dateA = a.DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO.split('/').reverse().join('');
-        const dateB = b.DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO.split('/').reverse().join('');
-        return dateB.localeCompare(dateA);
-      });
+        // Ordenar por data de atualização decrescente
+        const sorted = filtered.sort((a, b) => {
+          const dateA = a.DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO.split('/').reverse().join('');
+          const dateB = b.DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO.split('/').reverse().join('');
+          return dateB.localeCompare(dateA);
+        });
 
-      setResults(sorted);
+        setResults(sorted);
+      }
+    } catch (error) {
+      console.error('Erro na busca:', error);
+    } finally {
+      setLoading(false);
+      setHasSearched(true);
     }
-    
-    setHasSearched(true);
   };
 
   return (
     <div className="w-full max-w-3xl flex flex-col gap-8">
-      <div className="w-full bg-white rounded-[1.8rem] shadow-[0_15px_40px_-12px_rgba(0,31,63,0.08)] border border-slate-100 overflow-hidden relative group/container">
+      <div className={`w-full bg-white rounded-[1.8rem] shadow-[0_20px_50px_-15px_rgba(0,31,63,0.1)] border border-slate-200/60 overflow-hidden relative group/container transition-all duration-500 ${loading ? 'opacity-70 pointer-events-none' : ''}`}>
         {/* Luminous Background Effects */}
-        <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-blue-500/10 to-transparent" />
+        <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-blue-500/20 to-transparent opacity-0 group-hover/container:opacity-100 transition-opacity duration-1000" />
+        <div className="absolute -top-24 -left-24 w-64 h-64 bg-blue-50/50 rounded-full blur-3xl pointer-events-none" />
         
         {/* Tabs/Toggle */}
         <div className="flex bg-slate-50/50 p-1 gap-1 mt-6 mx-8 rounded-2xl border border-slate-100/80 backdrop-blur-sm">
           <button
             onClick={() => setActiveTab('name')}
+            disabled={loading}
             className={`flex-1 py-3 px-4 text-[10px] font-black flex items-center justify-center gap-2 rounded-xl transition-all duration-500 relative tracking-widest ${
               activeTab === 'name'
                 ? 'text-white bg-[#001f3f] shadow-md'
@@ -61,6 +71,7 @@ export default function SearchModule() {
           </button>
           <button
             onClick={() => setActiveTab('cns')}
+            disabled={loading}
             className={`flex-1 py-3 px-4 text-[10px] font-black flex items-center justify-center gap-2 rounded-xl transition-all duration-500 relative tracking-widest ${
               activeTab === 'cns'
                 ? 'text-white bg-[#001f3f] shadow-md'
@@ -77,13 +88,18 @@ export default function SearchModule() {
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="relative flex-1 group/input">
               <div className="absolute left-4 sm:left-6 top-1/2 -translate-y-1/2">
-                <Search className="text-slate-200 group-focus-within/input:text-[#001f3f] transition-colors" size={20} />
+                {loading ? (
+                  <div className="w-5 h-5 border-2 border-[#001f3f]/20 border-t-[#001f3f] rounded-full animate-spin" />
+                ) : (
+                  <Search className="text-slate-200 group-focus-within/input:text-[#001f3f] transition-colors" size={20} />
+                )}
               </div>
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                className="w-full pl-12 sm:pl-14 pr-10 sm:pr-12 py-4 sm:py-5 bg-slate-50/50 border border-slate-100 focus:border-blue-200 focus:bg-white rounded-xl sm:rounded-2xl font-manrope text-sm sm:text-base text-slate-800 outline-none transition-all placeholder:text-slate-300"
+                disabled={loading}
+                className="w-full pl-12 sm:pl-14 pr-10 sm:pr-12 py-4 sm:py-5 bg-slate-50/50 border border-slate-100 focus:border-blue-200 focus:bg-white rounded-xl sm:rounded-2xl font-manrope text-sm sm:text-base text-slate-800 outline-none transition-all placeholder:text-slate-300 disabled:cursor-not-allowed"
                 placeholder={
                   activeTab === 'name'
                     ? 'Quem deseja localizar?'
@@ -91,7 +107,7 @@ export default function SearchModule() {
                 }
                 type="text"
               />
-              {query && (
+              {query && !loading && (
                 <button
                   onClick={() => setQuery('')}
                   className="absolute right-3 sm:right-4 top-1/2 -translate-y-1/2 p-1.5 rounded-full hover:bg-red-50 text-slate-200 hover:text-red-400 transition-colors"
@@ -103,10 +119,20 @@ export default function SearchModule() {
 
             <button 
               onClick={handleSearch}
-              className="w-full sm:w-auto bg-[#001f3f] text-white px-8 py-4 sm:py-5 rounded-xl sm:rounded-2xl font-manrope text-[11px] font-black tracking-widest flex items-center justify-center gap-3 shadow-lg shadow-blue-900/10 hover:scale-[1.02] transition-all active:scale-95 group/btn overflow-hidden whitespace-nowrap"
+              disabled={loading}
+              className="w-full sm:w-auto bg-[#001f3f] text-white px-8 py-4 sm:py-5 rounded-xl sm:rounded-2xl font-manrope text-[11px] font-black tracking-widest flex items-center justify-center gap-3 shadow-lg shadow-blue-900/10 hover:scale-[1.02] transition-all active:scale-95 group/btn overflow-hidden whitespace-nowrap disabled:opacity-50 disabled:scale-100 disabled:cursor-not-allowed"
             >
-              BUSCAR
-              <ArrowRight className="group-hover/btn:translate-x-1 transition-transform" size={16} strokeWidth={3} />
+              {loading ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                  BUSCANDO...
+                </>
+              ) : (
+                <>
+                  BUSCAR
+                  <ArrowRight className="group-hover/btn:translate-x-1 transition-transform" size={16} strokeWidth={3} />
+                </>
+              )}
             </button>
           </div>
         </div>
@@ -116,7 +142,7 @@ export default function SearchModule() {
 
       {/* Results Section */}
       {hasSearched && (
-        <div className="flex flex-col gap-6 sm:gap-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+        <div className={`flex flex-col gap-6 sm:gap-8 animate-in fade-in slide-in-from-bottom-4 duration-700 ${loading ? 'opacity-50 blur-[2px]' : ''}`}>
           <div className="flex flex-col sm:flex-row sm:items-center justify-between px-2 sm:px-4 gap-4">
             <h2 className="text-xs sm:text-sm font-black text-slate-400 flex items-center gap-3 tracking-[0.2em] uppercase">
               <Shield className="text-[#001f3f]/20" size={20} />
@@ -130,12 +156,13 @@ export default function SearchModule() {
           {results.length > 0 ? (
             <div className="grid grid-cols-1 gap-6">
               {results.map((patient, idx) => (
-                <div key={idx} className="bg-white p-5 sm:p-8 rounded-[1.5rem] sm:rounded-[1.8rem] border border-slate-200 shadow-[0_4px_20px_-10px_rgba(0,0,0,0.1)] hover:shadow-[0_10px_30px_-10px_rgba(0,31,63,0.15)] transition-all duration-500 relative group/card overflow-hidden">
-                  <div className="absolute top-0 left-0 w-1.5 h-full bg-[#001f3f] opacity-10 group-hover/card:opacity-100 transition-opacity duration-500" />
+                <div key={idx} className="bg-white p-5 sm:p-8 rounded-[1.5rem] sm:rounded-[1.8rem] border border-slate-200 shadow-[0_10px_40px_-15px_rgba(0,0,0,0.05)] hover:shadow-[0_30px_60px_-20px_rgba(0,31,63,0.15)] hover:border-blue-100 transition-all duration-500 relative group/card overflow-hidden hover:-translate-y-1">
+                  {/* Subtle Background Glow */}
+                  <div className="absolute -right-20 -top-20 w-64 h-64 bg-blue-50/30 rounded-full blur-3xl opacity-0 group-hover/card:opacity-100 transition-opacity duration-1000 pointer-events-none" />
+                  
+                  <div className="absolute top-0 left-0 w-1.5 h-full bg-gradient-to-b from-blue-400 to-[#001f3f] opacity-0 group-hover/card:opacity-100 transition-opacity duration-500" />
                   
                   <div className="flex flex-col gap-5 sm:gap-6 relative z-10">
-                    {/* Compact Header */}
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 pb-4 gap-4">
                       <div className="flex items-center gap-3 sm:gap-4 overflow-hidden">
                         <span className="shrink-0 px-2.5 py-1 bg-emerald-50 text-emerald-700 text-[8px] sm:text-[9px] font-black rounded-lg uppercase tracking-widest border border-emerald-200">
                           {patient.SITUACAO_USUARIO}
@@ -261,7 +288,6 @@ export default function SearchModule() {
                             </div>
                           </div>
                         </div>
-                      </div>
                     </div>
                   </div>
                 </div>
