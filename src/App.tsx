@@ -1,4 +1,4 @@
-import { Clock, Sparkles, X } from 'lucide-react';
+import { Clock, Sparkles, X, Shield, ArrowRight } from 'lucide-react';
 import { useState } from 'react';
 import TopNavBar from './components/TopNavBar';
 import SearchModule from './components/SearchModule';
@@ -6,9 +6,28 @@ import SettingsPage from './components/SettingsPage';
 import { DataService } from './services/DataService';
 
 export default function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [globalLoginForm, setGlobalLoginForm] = useState({ user: '', pass: '' });
+  const [loginError, setLoginError] = useState('');
+
   const [view, setView] = useState<'search' | 'settings'>('search');
   const [showLogin, setShowLogin] = useState(false);
   const [loginForm, setLoginForm] = useState({ user: '', pass: '' });
+
+  const handleGlobalLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    const { user, pass } = globalLoginForm;
+    const isValid = 
+      (user === 'daps.cap53@gmail.com' && pass === 'daps2022') ||
+      (user === 'demandas.gabinete.cap5.3@gmail.com' && pass === 'BUSCAPAC@assessoria#2026&');
+
+    if (isValid) {
+      setIsAuthenticated(true);
+      setLoginError('');
+    } else {
+      setLoginError('Credenciais inválidas. Verifique e tente novamente.');
+    }
+  };
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -22,6 +41,72 @@ export default function App() {
   };
 
   const lastUpdate = DataService.getLastUpdate();
+
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-slate-50 font-manrope selection:bg-blue-100 selection:text-blue-900 flex items-center justify-center relative overflow-hidden p-4">
+        {/* Background Gradients */}
+        <div className="absolute top-0 left-0 w-full h-[50vh] bg-gradient-to-b from-[#001f3f] to-transparent opacity-90 clip-path-slant" />
+        <div className="absolute -top-24 -right-24 w-96 h-96 bg-blue-500/20 rounded-full blur-[100px] pointer-events-none" />
+        <div className="absolute -bottom-24 -left-24 w-96 h-96 bg-indigo-500/20 rounded-full blur-[100px] pointer-events-none" />
+        
+        <div className="bg-white/80 backdrop-blur-xl w-full max-w-md rounded-[2.5rem] p-8 sm:p-12 shadow-[0_20px_60px_-15px_rgba(0,31,63,0.3)] border border-white relative z-10 animate-in zoom-in-95 duration-500">
+          <div className="flex flex-col items-center mb-10">
+            <div className="w-16 h-16 bg-[#001f3f] rounded-2xl flex items-center justify-center shadow-xl shadow-blue-900/30 mb-6 relative">
+              <div className="absolute inset-0 bg-blue-500 rounded-2xl blur-xl opacity-20" />
+              <Shield size={32} className="text-white relative z-10" />
+            </div>
+            <h1 className="text-3xl font-black text-slate-900 tracking-tight mb-2">BuscaPac<span className="text-blue-600">5.3</span></h1>
+            <p className="text-xs sm:text-sm font-bold text-slate-500 uppercase tracking-widest text-center">Acesso Restrito</p>
+          </div>
+
+          <form onSubmit={handleGlobalLogin} className="space-y-6">
+            {loginError && (
+              <div className="bg-red-50 text-red-600 px-4 py-3 rounded-xl text-xs font-bold text-center border border-red-100 animate-in fade-in slide-in-from-top-2">
+                {loginError}
+              </div>
+            )}
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">E-mail Institucional</label>
+              <input
+                autoFocus
+                type="email"
+                value={globalLoginForm.user}
+                onChange={e => setGlobalLoginForm(prev => ({ ...prev, user: e.target.value }))}
+                className="w-full px-5 py-4 bg-white/50 border border-slate-200 rounded-xl outline-none focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-400/10 transition-all text-sm font-bold text-slate-800 placeholder:text-slate-300"
+                placeholder="usuario@gmail.com"
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Senha de Acesso</label>
+              <input
+                type="password"
+                value={globalLoginForm.pass}
+                onChange={e => setGlobalLoginForm(prev => ({ ...prev, pass: e.target.value }))}
+                className="w-full px-5 py-4 bg-white/50 border border-slate-200 rounded-xl outline-none focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-400/10 transition-all text-sm font-bold text-slate-800 placeholder:text-slate-300"
+                placeholder="••••••••"
+                required
+              />
+            </div>
+            <button
+              type="submit"
+              className="w-full bg-[#001f3f] text-white py-4 rounded-xl font-black text-[11px] sm:text-xs tracking-widest hover:scale-[1.02] active:scale-95 transition-all shadow-xl shadow-[#001f3f]/20 mt-4 flex items-center justify-center gap-3 group"
+            >
+              ENTRAR NO SISTEMA
+              <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
+            </button>
+          </form>
+          
+          <div className="mt-8 text-center">
+            <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.3em]">
+              CAP 5.3
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 font-manrope selection:bg-blue-100 selection:text-blue-900 overflow-x-hidden">
