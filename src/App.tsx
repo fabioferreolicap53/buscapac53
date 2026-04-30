@@ -84,19 +84,51 @@ export default function App() {
           {view === 'search' ? (
             <div className="flex flex-col items-center justify-center min-h-[500px] sm:min-h-[600px]">
               {/* Search Header - Responsive */}
-              <div className="text-center mb-8 sm:mb-12 max-w-2xl relative group/header w-full">
-                <div className="absolute -inset-10 bg-blue-500/5 rounded-full blur-[60px] opacity-0 group-hover/header:opacity-100 transition-opacity duration-1000 pointer-events-none hidden sm:block" />
+              <div className="text-center mb-10 sm:mb-16 max-w-2xl relative group/header w-full">
+                {/* Modern Decorative Elements */}
+                <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-64 h-64 bg-blue-600/10 rounded-full blur-[80px] opacity-0 group-hover/header:opacity-100 transition-opacity duration-1000 pointer-events-none" />
                 
-                <div className="relative z-10 px-2">
-                  <h1 className="text-3xl sm:text-4xl md:text-5xl font-black text-slate-900 tracking-tight mb-3 sm:mb-4 flex flex-wrap items-center justify-center gap-2 sm:gap-3">
-                    BuscaPac
-                    <span className="bg-gradient-to-r from-[#001f3f] to-blue-600 bg-clip-text text-transparent">5.3</span>
+                <div className="relative z-10 px-4">
+                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-100 mb-6 animate-in fade-in slide-in-from-top-4 duration-1000">
+                    <Sparkles size={12} className="text-blue-600" />
+                    <span className="text-[10px] font-black text-blue-600 uppercase tracking-[0.2em]">Sistema de Busca Inteligente</span>
+                  </div>
+
+                  <h1 className="text-4xl sm:text-5xl md:text-7xl font-black text-slate-900 tracking-tight mb-6 flex flex-col items-center justify-center gap-0">
+                    <span className="relative inline-block">
+                      BuscaPac
+                      <div className="absolute -right-8 -top-2 hidden sm:block">
+                        <div className="relative">
+                          <div className="absolute inset-0 bg-blue-600 blur-md opacity-20 animate-pulse" />
+                          <div className="relative bg-[#001f3f] text-white text-[10px] px-2 py-0.5 rounded-md font-black tracking-tighter">V1.0</div>
+                        </div>
+                      </div>
+                    </span>
+                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 via-indigo-600 to-[#001f3f] leading-tight mt-[-0.1em]">
+                      5.3
+                    </span>
                   </h1>
                   
-                  <p className="text-sm sm:text-base font-medium text-slate-500 leading-relaxed max-w-xl mx-auto">
-                     Localize pacientes do território da AP5.3 de forma rápida.
-                     <span className="block text-xs sm:text-sm text-slate-400 mt-1 font-normal italic">Use o nome ou o número do CNS.</span>
-                   </p>
+                  <div className="relative max-w-lg mx-auto">
+                    <div className="absolute left-0 top-1/2 -translate-y-1/2 w-8 h-[1px] bg-gradient-to-r from-transparent to-slate-200 hidden md:block" />
+                    <div className="absolute right-0 top-1/2 -translate-y-1/2 w-8 h-[1px] bg-gradient-to-l from-transparent to-slate-200 hidden md:block" />
+                    
+                    <p className="text-sm sm:text-base font-bold text-slate-500 leading-relaxed px-10">
+                      Localize pacientes do território da AP5.3 de forma rápida e segura
+                    </p>
+                  </div>
+                  
+                  <div className="mt-4 flex items-center justify-center gap-4 text-[10px] sm:text-[11px] font-black uppercase tracking-widest text-slate-400">
+                    <span className="flex items-center gap-1.5">
+                      <div className="w-1 h-1 rounded-full bg-blue-400" />
+                      NOME
+                    </span>
+                    <div className="w-1 h-1 rounded-full bg-slate-200" />
+                    <span className="flex items-center gap-1.5">
+                      <div className="w-1 h-1 rounded-full bg-indigo-400" />
+                      CNS
+                    </span>
+                  </div>
                 </div>
               </div>
 

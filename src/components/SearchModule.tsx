@@ -67,6 +67,23 @@ export default function SearchModule() {
     }
   };
 
+  const getStatusStyles = (status: string) => {
+    const s = status?.toUpperCase() || '';
+    if (s.includes('ATIVO') || s.includes('CADASTRADO') || s.includes('RESIDENTE')) {
+      return 'bg-emerald-50 text-emerald-700 border-emerald-200 shadow-[0_0_15px_-3px_rgba(16,185,129,0.3)]';
+    }
+    if (s.includes('OBITO') || s.includes('ÓBITO') || s.includes('FALECIDO')) {
+      return 'bg-slate-50 text-slate-700 border-slate-200 shadow-[0_0_15px_-3px_rgba(71,85,105,0.3)]';
+    }
+    if (s.includes('MUDANÇA') || s.includes('MUDOU') || s.includes('DOMICÍLIO')) {
+      return 'bg-blue-50 text-blue-700 border-blue-200 shadow-[0_0_15px_-3px_rgba(59,130,246,0.3)]';
+    }
+    if (s.includes('SUSPENSO') || s.includes('INATIVO') || s.includes('DESATIVADO')) {
+      return 'bg-amber-50 text-amber-700 border-amber-200 shadow-[0_0_15px_-3px_rgba(245,158,11,0.3)]';
+    }
+    return 'bg-slate-50 text-slate-600 border-slate-200 shadow-sm';
+  };
+
   return (
     <div className="w-full max-w-3xl flex flex-col gap-8">
       <div className={`w-full bg-white rounded-[1.8rem] shadow-[0_20px_50px_-15px_rgba(0,31,63,0.1)] border border-slate-200/60 overflow-hidden relative group/container transition-all duration-500 ${loading ? 'opacity-70 pointer-events-none' : ''}`}>
@@ -119,6 +136,10 @@ export default function SearchModule() {
                 onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                 disabled={loading}
                 className="w-full pl-12 sm:pl-14 pr-10 sm:pr-12 py-4 sm:py-5 bg-slate-50/50 border border-slate-100 focus:border-blue-200 focus:bg-white rounded-xl sm:rounded-2xl font-manrope text-sm sm:text-base text-slate-800 outline-none transition-all placeholder:text-slate-300 disabled:cursor-not-allowed"
+                spellCheck="false"
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
                 placeholder={
                   activeTab === 'name'
                     ? 'Quem deseja localizar?'
@@ -183,7 +204,7 @@ export default function SearchModule() {
                   
                   <div className="flex flex-col gap-5 sm:gap-6 relative z-10">
                       <div className="flex items-center gap-3 sm:gap-4 overflow-hidden">
-                        <span className="shrink-0 px-2.5 py-1 bg-emerald-50 text-emerald-700 text-[8px] sm:text-[9px] font-black rounded-lg uppercase tracking-widest border border-emerald-200">
+                        <span className={`shrink-0 px-2.5 py-1 text-[8px] sm:text-[9px] font-black rounded-lg uppercase tracking-widest border transition-all duration-500 hover:scale-105 ${getStatusStyles(patient.SITUACAO_USUARIO)}`}>
                           {patient.SITUACAO_USUARIO}
                         </span>
                         <h3 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight break-words">{patient.NOME_DA_PESSOA_CADASTRADA}</h3>
