@@ -145,10 +145,10 @@ export default function App() {
                    </span>
                 </div>
                 
-                <footer className="flex flex-col items-center gap-3 w-full px-4">
-                  <div className="h-[1px] w-12 bg-slate-200" />
-                  <p className="text-[9px] sm:text-[10px] font-black text-slate-300 uppercase tracking-[0.2em] sm:tracking-[0.25em] text-center leading-relaxed">
-                    Desenvolvido por <span className="text-slate-400">Fabio Ferreira de Oliveira</span> <br className="xs:hidden" /> <span className="hidden xs:inline">-</span> DAPS/CAP5.3
+                <footer className="flex flex-col items-center gap-3 w-full px-4 opacity-60 hover:opacity-100 transition-opacity duration-500">
+                  <div className="h-[1px] w-8 bg-slate-200" />
+                  <p className="text-[10px] sm:text-xs font-medium text-slate-400 text-center leading-relaxed">
+                    Desenvolvido por <span className="font-bold text-slate-500">Fabio Ferreira de Oliveira</span> <br className="xs:hidden" /> <span className="hidden xs:inline">•</span> DAPS/CAP5.3
                   </p>
                 </footer>
               </div>
