@@ -70,6 +70,10 @@ export default function SearchModule() {
       setResults(sortPatients(localResults));
       setHasSearched(true);
 
+      if (localData.length > 0) {
+        return;
+      }
+
       const remoteResults = await DataService.searchRemote(searchTerm, activeTab);
       const finalResults = mergePatients(localResults, remoteResults);
       setResults(sortPatients(finalResults));

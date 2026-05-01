@@ -27,6 +27,8 @@ export interface UploadHistory {
 
 const pb = new PocketBase(import.meta.env.VITE_DB_ADDRESS || 'https://centraldedados.dev.br');
 const REMOTE_TIMEOUT_MS = 8000;
+const REMOTE_NAME_PAGE_SIZE = 200;
+const REMOTE_NAME_STOP_WORDS = new Set(['da', 'de', 'do', 'das', 'dos', 'e']);
 
 const STORAGE_KEY = 'buscapac_db';
 const UPDATE_KEY = 'buscapac_last_update';
@@ -47,6 +49,26 @@ const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number, errorMessa
       clearTimeout(timeoutId);
     }
   }
+};
+
+const escapeFilterValue = (value: string): string => {
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+};
+
+const buildRemoteNameFilter = (query: string): string => {
+  const tokens = normalizeString(query)
+    .split(' ')
+    .filter((token) => token.length >= 3 && !REMOTE_NAME_STOP_WORDS.has(token))
+    .sort((a, b) => b.length - a.length)
+    .slice(0, 3);
+
+  if (tokens.length === 0) {
+    return `NOME_DA_PESSOA_CADASTRADA ~ "${escapeFilterValue(query.trim())}"`;
+  }
+
+  return tokens
+    .map((token) => `NOME_DA_PESSOA_CADASTRADA ~ "${escapeFilterValue(token)}"`)
+    .join(' && ');
 };
 
 export const DataService = {
@@ -94,6 +116,14 @@ export const DataService = {
       count: data.length,
       fileName: fileName
     };
+
+    // Persistir local primeiro para busca funcionar mesmo se sync remota falhar.
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    localStorage.setItem(UPDATE_KEY, now);
+    
+    const history = DataService.getHistory();
+    const updatedHistory = [newEntry, ...history].slice(0, 5);
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(updatedHistory));
 
     // 1. Sincronizar com PocketBase primeiro
     try {
@@ -155,18 +185,9 @@ export const DataService = {
         }
       }
 
-      // 2. Salvar localmente APÓS sucesso no banco
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-      localStorage.setItem(UPDATE_KEY, now);
-      
-      const history = DataService.getHistory();
-      const updatedHistory = [newEntry, ...history].slice(0, 5);
-      localStorage.setItem(HISTORY_KEY, JSON.stringify(updatedHistory));
-
       console.log('Sincronização PocketBase concluída!');
     } catch (error) {
-      console.error('Falha crítica na sincronização PocketBase:', error);
-      throw error;
+      console.warn('Falha na sincronização PocketBase. Base local mantida.', error);
     }
   },
 
@@ -182,16 +203,16 @@ export const DataService = {
       if (type === 'name') {
         const normalizedQuery = normalizeString(query);
         const records = await withTimeout(
-          pb.collection('buscapac53_pacientes').getFullList({
+          pb.collection('buscapac53_pacientes').getList(1, REMOTE_NAME_PAGE_SIZE, {
+            filter: buildRemoteNameFilter(query),
             sort: 'NOME_DA_MAE_PESSOA_CADASTRADA,-DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO',
-            batch: 500,
             $autoCancel: false
           }),
           REMOTE_TIMEOUT_MS,
           'Timeout na busca remota por nome.'
         );
 
-        return (records as unknown as PatientData[]).filter((patient) =>
+        return (records.items as unknown as PatientData[]).filter((patient) =>
           normalizeString(patient.NOME_DA_PESSOA_CADASTRADA).includes(normalizedQuery)
         );
       }
@@ -209,7 +230,7 @@ export const DataService = {
       // Manter chaves como vêm do PB (assumindo que estão MAIÚSCULAS agora)
       return records.items as unknown as PatientData[];
     } catch (error) {
-      console.error('PocketBase Search Error:', error);
+      console.warn('Busca remota indisponível. Usando base local.', error);
       return [];
     }
   },
