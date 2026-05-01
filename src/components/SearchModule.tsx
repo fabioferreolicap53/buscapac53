@@ -1,6 +1,7 @@
 import { User, IdCard, UserSearch, ArrowRight, MapPin, Calendar, Heart, Shield, Clock, X, Sparkles, Search, Users, Activity } from 'lucide-react';
 import { useState } from 'react';
 import { DataService, PatientData } from '../services/DataService';
+import { normalizeString } from '../utils/stringUtils';
 
 export default function SearchModule() {
   const [activeTab, setActiveTab] = useState<'name' | 'cns'>('name');
@@ -25,9 +26,12 @@ export default function SearchModule() {
       } else {
         // Fallback para local se remoto falhar ou estiver vazio
         const data = DataService.getData();
+        const normalizedSearch = normalizeString(searchTerm);
+        
         finalResults = data.filter(p => {
           if (activeTab === 'name') {
-            return p.NOME_DA_PESSOA_CADASTRADA.toLowerCase().includes(searchTerm.toLowerCase());
+            const normalizedName = normalizeString(p.NOME_DA_PESSOA_CADASTRADA);
+            return normalizedName.includes(normalizedSearch);
           } else {
             return p.N_CNS_DA_PESSOA_CADASTRADA.includes(searchTerm);
           }
@@ -68,17 +72,17 @@ export default function SearchModule() {
   };
 
   const getStatusStyles = (status: string) => {
-    const s = status?.toUpperCase() || '';
-    if (s.includes('ATIVO') || s.includes('CADASTRADO') || s.includes('RESIDENTE')) {
+    const s = normalizeString(status || '');
+    if (s.includes('ativo') || s.includes('cadastrado') || s.includes('residente')) {
       return 'bg-emerald-50 text-emerald-700 border-emerald-200 shadow-[0_0_15px_-3px_rgba(16,185,129,0.3)]';
     }
-    if (s.includes('OBITO') || s.includes('ÓBITO') || s.includes('FALECIDO')) {
+    if (s.includes('obito') || s.includes('falecido')) {
       return 'bg-slate-50 text-slate-700 border-slate-200 shadow-[0_0_15px_-3px_rgba(71,85,105,0.3)]';
     }
-    if (s.includes('MUDANÇA') || s.includes('MUDOU') || s.includes('DOMICÍLIO')) {
+    if (s.includes('mudanca') || s.includes('mudou') || s.includes('domicilio')) {
       return 'bg-blue-50 text-blue-700 border-blue-200 shadow-[0_0_15px_-3px_rgba(59,130,246,0.3)]';
     }
-    if (s.includes('SUSPENSO') || s.includes('INATIVO') || s.includes('DESATIVADO')) {
+    if (s.includes('suspenso') || s.includes('inativo') || s.includes('desativado')) {
       return 'bg-amber-50 text-amber-700 border-amber-200 shadow-[0_0_15px_-3px_rgba(245,158,11,0.3)]';
     }
     return 'bg-slate-50 text-slate-600 border-slate-200 shadow-sm';
