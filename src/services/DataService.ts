@@ -1,5 +1,5 @@
-
 import PocketBase from 'pocketbase';
+import { normalizeString } from '../utils/stringUtils';
 
 export interface PatientData {
   id?: string;
@@ -150,16 +150,25 @@ export const DataService = {
   searchRemote: async (query: string, type: 'name' | 'cns') => {
     try {
       await DataService.authenticate();
-      const filter = type === 'name' 
-        ? `NOME_DA_PESSOA_CADASTRADA ~ "${query}"`
-        : `N_CNS_DA_PESSOA_CADASTRADA = "${query}"`;
-        
+      if (type === 'name') {
+        const normalizedQuery = normalizeString(query);
+        const records = await pb.collection('buscapac53_pacientes').getFullList({
+          sort: 'NOME_DA_MAE_PESSOA_CADASTRADA,-DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO',
+          batch: 500,
+          $autoCancel: false
+        });
+
+        return (records as unknown as PatientData[]).filter((patient) =>
+          normalizeString(patient.NOME_DA_PESSOA_CADASTRADA).includes(normalizedQuery)
+        );
+      }
+
       const records = await pb.collection('buscapac53_pacientes').getList(1, 50, {
-        filter: filter,
+        filter: `N_CNS_DA_PESSOA_CADASTRADA = "${query}"`,
         sort: 'NOME_DA_MAE_PESSOA_CADASTRADA,-DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO',
         $autoCancel: false
       });
-      
+
       // Manter chaves como vêm do PB (assumindo que estão MAIÚSCULAS agora)
       return records.items as unknown as PatientData[];
     } catch (error) {
