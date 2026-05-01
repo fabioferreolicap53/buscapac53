@@ -10,39 +10,48 @@ export default function SearchModule() {
   const [hasSearched, setHasSearched] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  const getPatientKey = (patient: PatientData) => {
+    return patient.id || patient.N_CNS_DA_PESSOA_CADASTRADA || `${patient.NOME_DA_PESSOA_CADASTRADA}-${patient.DATA_DE_NASCIMENTO}`;
+  };
+
+  const mergePatients = (...groups: PatientData[][]) => {
+    const merged = new Map<string, PatientData>();
+
+    groups.flat().forEach((patient) => {
+      merged.set(getPatientKey(patient), patient);
+    });
+
+    return Array.from(merged.values());
+  };
+
+  const filterPatientsByQuery = (patients: PatientData[], searchTerm: string, searchType: 'name' | 'cns') => {
+    const normalizedSearch = normalizeString(searchTerm);
+
+    return patients.filter((patient) => {
+      if (searchType === 'name') {
+        return normalizeString(patient.NOME_DA_PESSOA_CADASTRADA).includes(normalizedSearch);
+      }
+
+      return patient.N_CNS_DA_PESSOA_CADASTRADA.includes(searchTerm.trim());
+    });
+  };
+
   const handleSearch = async () => {
     const searchTerm = query.trim();
     if (!searchTerm) return;
     
     setLoading(true);
     try {
-      let finalResults: PatientData[] = [];
-      
-      // Tentar busca remota primeiro (PocketBase)
+      const localData = DataService.getData();
+      const localResults = filterPatientsByQuery(localData, searchTerm, activeTab);
       const remoteResults = await DataService.searchRemote(searchTerm, activeTab);
-      
-      if (remoteResults.length > 0) {
-        finalResults = remoteResults;
-      } else {
-        // Fallback para local se remoto falhar ou estiver vazio
-        const data = DataService.getData();
-        const normalizedSearch = normalizeString(searchTerm);
-        
-        finalResults = data.filter(p => {
-          if (activeTab === 'name') {
-            const normalizedName = normalizeString(p.NOME_DA_PESSOA_CADASTRADA);
-            return normalizedName.includes(normalizedSearch);
-          } else {
-            return p.N_CNS_DA_PESSOA_CADASTRADA.includes(searchTerm);
-          }
-        });
-      }
+      const finalResults = mergePatients(localResults, remoteResults);
 
       // Ordenação unificada: Nome da Mãe (alfabético) e depois Data de Atualização (decrescente)
       const sorted = finalResults.sort((a, b) => {
         // Primeiro critério: Nome da Mãe
-        const maeA = (a.NOME_DA_MAE_PESSOA_CADASTRADA || '').toLowerCase();
-        const maeB = (b.NOME_DA_MAE_PESSOA_CADASTRADA || '').toLowerCase();
+        const maeA = normalizeString(a.NOME_DA_MAE_PESSOA_CADASTRADA);
+        const maeB = normalizeString(b.NOME_DA_MAE_PESSOA_CADASTRADA);
         
         if (maeA !== maeB) {
           return maeA.localeCompare(maeB);
