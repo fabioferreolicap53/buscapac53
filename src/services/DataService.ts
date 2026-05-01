@@ -26,10 +26,28 @@ export interface UploadHistory {
 }
 
 const pb = new PocketBase(import.meta.env.VITE_DB_ADDRESS || 'https://centraldedados.dev.br');
+const REMOTE_TIMEOUT_MS = 8000;
 
 const STORAGE_KEY = 'buscapac_db';
 const UPDATE_KEY = 'buscapac_last_update';
 const HISTORY_KEY = 'buscapac_upload_history';
+
+const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number, errorMessage: string): Promise<T> => {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error(errorMessage)), timeoutMs);
+      })
+    ]);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
+};
 
 export const DataService = {
   // Autenticação com PocketBase
@@ -37,23 +55,34 @@ export const DataService = {
     const email = import.meta.env.VITE_DB_LOGIN;
     const password = import.meta.env.VITE_DB_PASSWORD;
 
+    if (pb.authStore.isValid) {
+      return pb.authStore.model;
+    }
+
+    if (!email || !password) {
+      throw new Error('Credenciais do PocketBase ausentes.');
+    }
+
     try {
-      // Tentar via SDK padrão para usuários
-      const authData = await pb.collection('users').authWithPassword(email, password);
+      // PocketBase atual usa _superusers para autenticação administrativa.
+      const authData = await withTimeout(
+        pb.collection('_superusers').authWithPassword(email, password),
+        REMOTE_TIMEOUT_MS,
+        'Timeout na autenticação _superusers.'
+      );
       return authData;
     } catch (error) {
-      console.warn('Falha na auth user, tentando admin legacy...', error);
+      console.warn('Falha na auth _superusers, tentando coleção users...', error);
       try {
-        // Fallback: Tentar Admin (Legacy /api/admins para PocketBase < 0.22)
-        const authData = await pb.send('/api/admins/auth-with-password', {
-          method: 'POST',
-          body: { identity: email, password: password }
-        });
-        pb.authStore.save(authData.token, authData.admin);
+        const authData = await withTimeout(
+          pb.collection('users').authWithPassword(email, password),
+          REMOTE_TIMEOUT_MS,
+          'Timeout na autenticação users.'
+        );
         return authData;
-      } catch (sdkError) {
-        console.error('Falha total na autenticação PocketBase:', sdkError);
-        throw sdkError;
+      } catch (usersError) {
+        console.error('Falha total na autenticação PocketBase:', usersError);
+        throw usersError;
       }
     }
   },
@@ -152,22 +181,30 @@ export const DataService = {
       await DataService.authenticate();
       if (type === 'name') {
         const normalizedQuery = normalizeString(query);
-        const records = await pb.collection('buscapac53_pacientes').getFullList({
-          sort: 'NOME_DA_MAE_PESSOA_CADASTRADA,-DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO',
-          batch: 500,
-          $autoCancel: false
-        });
+        const records = await withTimeout(
+          pb.collection('buscapac53_pacientes').getFullList({
+            sort: 'NOME_DA_MAE_PESSOA_CADASTRADA,-DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO',
+            batch: 500,
+            $autoCancel: false
+          }),
+          REMOTE_TIMEOUT_MS,
+          'Timeout na busca remota por nome.'
+        );
 
         return (records as unknown as PatientData[]).filter((patient) =>
           normalizeString(patient.NOME_DA_PESSOA_CADASTRADA).includes(normalizedQuery)
         );
       }
 
-      const records = await pb.collection('buscapac53_pacientes').getList(1, 50, {
-        filter: `N_CNS_DA_PESSOA_CADASTRADA = "${query}"`,
-        sort: 'NOME_DA_MAE_PESSOA_CADASTRADA,-DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO',
-        $autoCancel: false
-      });
+      const records = await withTimeout(
+        pb.collection('buscapac53_pacientes').getList(1, 50, {
+          filter: `N_CNS_DA_PESSOA_CADASTRADA = "${query}"`,
+          sort: 'NOME_DA_MAE_PESSOA_CADASTRADA,-DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO',
+          $autoCancel: false
+        }),
+        REMOTE_TIMEOUT_MS,
+        'Timeout na busca remota por CNS.'
+      );
 
       // Manter chaves como vêm do PB (assumindo que estão MAIÚSCULAS agora)
       return records.items as unknown as PatientData[];

@@ -24,6 +24,29 @@ export default function SearchModule() {
     return Array.from(merged.values());
   };
 
+  const sortPatients = (patients: PatientData[]) => {
+    return [...patients].sort((a, b) => {
+      const maeA = normalizeString(a.NOME_DA_MAE_PESSOA_CADASTRADA);
+      const maeB = normalizeString(b.NOME_DA_MAE_PESSOA_CADASTRADA);
+
+      if (maeA !== maeB) {
+        return maeA.localeCompare(maeB);
+      }
+
+      const formatSortDate = (d: string) => {
+        if (!d || !d.includes('/')) return '00000000';
+        const parts = d.split('/');
+        if (parts.length !== 3) return '00000000';
+        return parts[2] + parts[1] + parts[0];
+      };
+
+      const dateA = formatSortDate(a.DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO);
+      const dateB = formatSortDate(b.DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO);
+
+      return dateB.localeCompare(dateA);
+    });
+  };
+
   const filterPatientsByQuery = (patients: PatientData[], searchTerm: string, searchType: 'name' | 'cns') => {
     const normalizedSearch = normalizeString(searchTerm);
 
@@ -44,39 +67,16 @@ export default function SearchModule() {
     try {
       const localData = DataService.getData();
       const localResults = filterPatientsByQuery(localData, searchTerm, activeTab);
+      setResults(sortPatients(localResults));
+      setHasSearched(true);
+
       const remoteResults = await DataService.searchRemote(searchTerm, activeTab);
       const finalResults = mergePatients(localResults, remoteResults);
-
-      // Ordenação unificada: Nome da Mãe (alfabético) e depois Data de Atualização (decrescente)
-      const sorted = finalResults.sort((a, b) => {
-        // Primeiro critério: Nome da Mãe
-        const maeA = normalizeString(a.NOME_DA_MAE_PESSOA_CADASTRADA);
-        const maeB = normalizeString(b.NOME_DA_MAE_PESSOA_CADASTRADA);
-        
-        if (maeA !== maeB) {
-          return maeA.localeCompare(maeB);
-        }
-
-        // Segundo critério: Data de Atualização Decrescente (YYYYMMDD)
-        const formatSortDate = (d: string) => {
-          if (!d || !d.includes('/')) return '00000000';
-          const parts = d.split('/');
-          if (parts.length !== 3) return '00000000';
-          return parts[2] + parts[1] + parts[0]; // YYYY + MM + DD
-        };
-
-        const dateA = formatSortDate(a.DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO);
-        const dateB = formatSortDate(b.DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO);
-        
-        return dateB.localeCompare(dateA);
-      });
-
-      setResults(sorted);
+      setResults(sortPatients(finalResults));
     } catch (error) {
       console.error('Erro na busca:', error);
     } finally {
       setLoading(false);
-      setHasSearched(true);
     }
   };
 
