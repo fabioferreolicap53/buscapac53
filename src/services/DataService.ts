@@ -27,28 +27,12 @@ export interface UploadHistory {
 
 const pb = new PocketBase(import.meta.env.VITE_DB_ADDRESS || 'https://centraldedados.dev.br');
 const REMOTE_TIMEOUT_MS = 8000;
-const REMOTE_FULL_SCAN_TIMEOUT_MS = 20000;
+const REMOTE_NAME_PAGE_SIZE = 200;
+const REMOTE_NAME_STOP_WORDS = new Set(['da', 'de', 'do', 'das', 'dos', 'e']);
 
 const STORAGE_KEY = 'buscapac_db';
 const UPDATE_KEY = 'buscapac_last_update';
 const HISTORY_KEY = 'buscapac_upload_history';
-let remotePatientsCache: PatientData[] | null = null;
-
-const readStoredJson = <T>(key: string, fallback: T): T => {
-  const rawValue = localStorage.getItem(key);
-  if (!rawValue) {
-    return fallback;
-  }
-
-  try {
-    const parsed = JSON.parse(rawValue);
-    return parsed ?? fallback;
-  } catch (error) {
-    console.warn(`Conteúdo inválido encontrado em ${key}. Limpando armazenamento local.`, error);
-    localStorage.removeItem(key);
-    return fallback;
-  }
-};
 
 const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number, errorMessage: string): Promise<T> => {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
@@ -67,22 +51,24 @@ const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number, errorMessa
   }
 };
 
-const getAllRemotePatients = async (): Promise<PatientData[]> => {
-  if (remotePatientsCache) {
-    return remotePatientsCache;
+const escapeFilterValue = (value: string): string => {
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+};
+
+const buildRemoteNameFilter = (query: string): string => {
+  const tokens = normalizeString(query)
+    .split(' ')
+    .filter((token) => token.length >= 3 && !REMOTE_NAME_STOP_WORDS.has(token))
+    .sort((a, b) => b.length - a.length)
+    .slice(0, 3);
+
+  if (tokens.length === 0) {
+    return `NOME_DA_PESSOA_CADASTRADA ~ "${escapeFilterValue(query.trim())}"`;
   }
 
-  const records = await withTimeout(
-    pb.collection('buscapac53_pacientes').getFullList(500, {
-      sort: 'NOME_DA_MAE_PESSOA_CADASTRADA,-DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO',
-      $autoCancel: false
-    }),
-    REMOTE_FULL_SCAN_TIMEOUT_MS,
-    'Timeout ao carregar base remota completa.'
-  );
-
-  remotePatientsCache = records as unknown as PatientData[];
-  return remotePatientsCache;
+  return tokens
+    .map((token) => `NOME_DA_PESSOA_CADASTRADA ~ "${escapeFilterValue(token)}"`)
+    .join(' && ');
 };
 
 export const DataService = {
@@ -134,7 +120,6 @@ export const DataService = {
     // Persistir local primeiro para busca funcionar mesmo se sync remota falhar.
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
     localStorage.setItem(UPDATE_KEY, now);
-    remotePatientsCache = data;
     
     const history = DataService.getHistory();
     const updatedHistory = [newEntry, ...history].slice(0, 5);
@@ -207,8 +192,8 @@ export const DataService = {
   },
 
   getData: (): PatientData[] => {
-    const data = readStoredJson<unknown>(STORAGE_KEY, []);
-    return Array.isArray(data) ? data as PatientData[] : [];
+    const data = localStorage.getItem(STORAGE_KEY);
+    return data ? JSON.parse(data) : [];
   },
 
   // Busca remota (Opcional, para usar os índices que criamos)
@@ -217,9 +202,17 @@ export const DataService = {
       await DataService.authenticate();
       if (type === 'name') {
         const normalizedQuery = normalizeString(query);
-        const remotePatients = await getAllRemotePatients();
+        const records = await withTimeout(
+          pb.collection('buscapac53_pacientes').getList(1, REMOTE_NAME_PAGE_SIZE, {
+            filter: buildRemoteNameFilter(query),
+            sort: 'NOME_DA_MAE_PESSOA_CADASTRADA,-DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO',
+            $autoCancel: false
+          }),
+          REMOTE_TIMEOUT_MS,
+          'Timeout na busca remota por nome.'
+        );
 
-        return remotePatients.filter((patient) =>
+        return (records.items as unknown as PatientData[]).filter((patient) =>
           normalizeString(patient.NOME_DA_PESSOA_CADASTRADA).includes(normalizedQuery)
         );
       }
@@ -247,8 +240,8 @@ export const DataService = {
   },
 
   getHistory: (): UploadHistory[] => {
-    const history = readStoredJson<unknown>(HISTORY_KEY, []);
-    return Array.isArray(history) ? history as UploadHistory[] : [];
+    const history = localStorage.getItem(HISTORY_KEY);
+    return history ? JSON.parse(history) : [];
   },
 
   parseCSV: (csvText: string): PatientData[] => {
