@@ -86,15 +86,15 @@ export const DataService = {
     }
 
     try {
-      // PocketBase atual usa _superusers para autenticação administrativa.
+      // PocketBase < 0.23 usa pb.admins.authWithPassword
       const authData = await withTimeout(
-        pb.collection('_superusers').authWithPassword(email, password),
+        pb.admins.authWithPassword(email, password),
         REMOTE_TIMEOUT_MS,
-        'Timeout na autenticação _superusers.'
+        'Timeout na autenticação admin.'
       );
       return authData;
     } catch (error) {
-      console.warn('Falha na auth _superusers, tentando coleção users...', error);
+      console.warn('Falha na auth admin, tentando auth user...', error);
       try {
         const authData = await withTimeout(
           pb.collection('users').authWithPassword(email, password),
@@ -215,7 +215,14 @@ export const DataService = {
 
         return (records.items as unknown as PatientData[]).filter((patient) => {
           const patientName = normalizeString(patient.NOME_DA_PESSOA_CADASTRADA);
-          return tokens.every(token => patientName.includes(token));
+          const nameParts = patientName.split(' ');
+          
+          return tokens.every((token, index) => {
+            if (index === tokens.length - 1) {
+              return nameParts.some(part => part.startsWith(token));
+            }
+            return nameParts.includes(token);
+          });
         });
       }
 

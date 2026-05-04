@@ -1,5 +1,5 @@
 import { Clock, Sparkles, X, Shield, ArrowRight, Eye, EyeOff } from 'lucide-react';
-import { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import TopNavBar from './components/TopNavBar';
 import SearchModule from './components/SearchModule';
 import SettingsPage from './components/SettingsPage';

@@ -24,8 +24,26 @@ export default function SearchModule() {
     return Array.from(merged.values());
   };
 
-  const sortPatients = (patients: PatientData[]) => {
+  const sortPatients = (patients: PatientData[], searchTerm?: string) => {
+    const normalizedSearch = searchTerm ? normalizeString(searchTerm) : '';
+
     return [...patients].sort((a, b) => {
+      // Se houver termo de busca, prioriza quem começa com o termo exato ou tem o nome igual
+      if (normalizedSearch) {
+        const nameA = normalizeString(a.NOME_DA_PESSOA_CADASTRADA);
+        const nameB = normalizeString(b.NOME_DA_PESSOA_CADASTRADA);
+        
+        const exactA = nameA === normalizedSearch;
+        const exactB = nameB === normalizedSearch;
+        if (exactA && !exactB) return -1;
+        if (!exactA && exactB) return 1;
+
+        const startsA = nameA.startsWith(normalizedSearch);
+        const startsB = nameB.startsWith(normalizedSearch);
+        if (startsA && !startsB) return -1;
+        if (!startsA && startsB) return 1;
+      }
+
       const maeA = normalizeString(a.NOME_DA_MAE_PESSOA_CADASTRADA);
       const maeB = normalizeString(b.NOME_DA_MAE_PESSOA_CADASTRADA);
 
@@ -54,11 +72,20 @@ export default function SearchModule() {
       return patients.filter(patient => patient.N_CNS_DA_PESSOA_CADASTRADA.includes(searchTerm.trim()));
     }
 
-    // Busca por nome: divide em tokens para permitir ordem diferente (ex: "fabio oliveira" acha "fabio de oliveira")
+    // Busca inteligente por tokens
     const tokens = normalizedSearch.split(' ').filter(t => t.length > 0);
     return patients.filter((patient) => {
       const patientName = normalizeString(patient.NOME_DA_PESSOA_CADASTRADA);
-      return tokens.every(token => patientName.includes(token));
+      const nameParts = patientName.split(' ');
+      
+      return tokens.every((token, index) => {
+        // O último token digitado pode ser apenas o começo da palavra (ex: "ferr" acha "ferreira")
+        if (index === tokens.length - 1) {
+          return nameParts.some(part => part.startsWith(token));
+        }
+        // Tokens anteriores precisam ser a palavra exata (ex: "fabio" acha "fabio", não acha "fabiola")
+        return nameParts.includes(token);
+      });
     });
   };
 
@@ -70,14 +97,14 @@ export default function SearchModule() {
     try {
       const localData = DataService.getData();
       const localResults = filterPatientsByQuery(localData, searchTerm, activeTab);
-      setResults(sortPatients(localResults));
+      setResults(sortPatients(localResults, searchTerm));
       setHasSearched(true);
 
       // Sempre busca remoto para garantir dados mais atualizados e mescla
       const remoteResults = await DataService.searchRemote(searchTerm, activeTab);
       if (remoteResults && remoteResults.length > 0) {
         const finalResults = mergePatients(localResults, remoteResults);
-        setResults(sortPatients(finalResults));
+        setResults(sortPatients(finalResults, searchTerm));
       }
     } catch (error) {
       console.error('Erro na busca:', error);
