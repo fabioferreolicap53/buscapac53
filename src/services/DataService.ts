@@ -34,6 +34,22 @@ const STORAGE_KEY = 'buscapac_db';
 const UPDATE_KEY = 'buscapac_last_update';
 const HISTORY_KEY = 'buscapac_upload_history';
 
+const readStoredJson = <T>(key: string, fallback: T): T => {
+  const rawValue = localStorage.getItem(key);
+  if (!rawValue) {
+    return fallback;
+  }
+
+  try {
+    const parsed = JSON.parse(rawValue);
+    return parsed ?? fallback;
+  } catch (error) {
+    console.warn(`Conteúdo inválido encontrado em ${key}. Limpando armazenamento local.`, error);
+    localStorage.removeItem(key);
+    return fallback;
+  }
+};
+
 const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number, errorMessage: string): Promise<T> => {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
@@ -192,8 +208,8 @@ export const DataService = {
   },
 
   getData: (): PatientData[] => {
-    const data = localStorage.getItem(STORAGE_KEY);
-    return data ? JSON.parse(data) : [];
+    const data = readStoredJson<unknown>(STORAGE_KEY, []);
+    return Array.isArray(data) ? data as PatientData[] : [];
   },
 
   // Busca remota (Opcional, para usar os índices que criamos)
@@ -240,8 +256,8 @@ export const DataService = {
   },
 
   getHistory: (): UploadHistory[] => {
-    const history = localStorage.getItem(HISTORY_KEY);
-    return history ? JSON.parse(history) : [];
+    const history = readStoredJson<unknown>(HISTORY_KEY, []);
+    return Array.isArray(history) ? history as UploadHistory[] : [];
   },
 
   parseCSV: (csvText: string): PatientData[] => {
