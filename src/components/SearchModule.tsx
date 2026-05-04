@@ -50,12 +50,15 @@ export default function SearchModule() {
   const filterPatientsByQuery = (patients: PatientData[], searchTerm: string, searchType: 'name' | 'cns') => {
     const normalizedSearch = normalizeString(searchTerm);
 
-    return patients.filter((patient) => {
-      if (searchType === 'name') {
-        return normalizeString(patient.NOME_DA_PESSOA_CADASTRADA).includes(normalizedSearch);
-      }
+    if (searchType === 'cns') {
+      return patients.filter(patient => patient.N_CNS_DA_PESSOA_CADASTRADA.includes(searchTerm.trim()));
+    }
 
-      return patient.N_CNS_DA_PESSOA_CADASTRADA.includes(searchTerm.trim());
+    // Busca por nome: divide em tokens para permitir ordem diferente (ex: "fabio oliveira" acha "fabio de oliveira")
+    const tokens = normalizedSearch.split(' ').filter(t => t.length > 0);
+    return patients.filter((patient) => {
+      const patientName = normalizeString(patient.NOME_DA_PESSOA_CADASTRADA);
+      return tokens.every(token => patientName.includes(token));
     });
   };
 
@@ -70,13 +73,12 @@ export default function SearchModule() {
       setResults(sortPatients(localResults));
       setHasSearched(true);
 
-      if (localData.length > 0) {
-        return;
-      }
-
+      // Sempre busca remoto para garantir dados mais atualizados e mescla
       const remoteResults = await DataService.searchRemote(searchTerm, activeTab);
-      const finalResults = mergePatients(localResults, remoteResults);
-      setResults(sortPatients(finalResults));
+      if (remoteResults && remoteResults.length > 0) {
+        const finalResults = mergePatients(localResults, remoteResults);
+        setResults(sortPatients(finalResults));
+      }
     } catch (error) {
       console.error('Erro na busca:', error);
     } finally {

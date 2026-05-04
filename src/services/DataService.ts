@@ -202,6 +202,7 @@ export const DataService = {
       await DataService.authenticate();
       if (type === 'name') {
         const normalizedQuery = normalizeString(query);
+        const tokens = normalizedQuery.split(' ').filter(t => t.length > 0);
         const records = await withTimeout(
           pb.collection('buscapac53_pacientes').getList(1, REMOTE_NAME_PAGE_SIZE, {
             filter: buildRemoteNameFilter(query),
@@ -212,9 +213,10 @@ export const DataService = {
           'Timeout na busca remota por nome.'
         );
 
-        return (records.items as unknown as PatientData[]).filter((patient) =>
-          normalizeString(patient.NOME_DA_PESSOA_CADASTRADA).includes(normalizedQuery)
-        );
+        return (records.items as unknown as PatientData[]).filter((patient) => {
+          const patientName = normalizeString(patient.NOME_DA_PESSOA_CADASTRADA);
+          return tokens.every(token => patientName.includes(token));
+        });
       }
 
       const records = await withTimeout(
