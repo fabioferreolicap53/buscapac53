@@ -24,7 +24,9 @@ export default function App() {
     const { user, pass } = globalLoginForm;
     const isValid = 
       (user === 'daps.cap53@gmail.com' && pass === 'daps2022') ||
-      (user === 'demandas.gabinete.cap5.3@gmail.com' && pass === 'BUSCAPAC@assessoria#2026&');
+      (user === 'demandas.gabinete.cap5.3@gmail.com' && pass === 'BUSCAPAC@assessoria#2026&') ||
+      (user === 'ouvidoria.cap53@gmail.com' && pass === 'ouvidoria.buscapac53') ||
+      (user === 'nir.cap53@gmail.com' && pass === 'nir.buscapac53');
 
     if (isValid) {
       setIsAuthenticated(true);
