@@ -142,35 +142,49 @@ export const DataService = {
       // Criar registro de histórico no PB
       await pb.collection('buscapac53_historico').create(newEntry);
 
-      // Limpeza: Buscar todos e deletar (Otimizado para grandes volumes)
-      if (onProgress) onProgress('Limpando registros antigos no servidor...', 15);
-      console.log('Limpando registros antigos...');
+      // Limpeza ultra rápida: Deletar a coleção inteira e recriar com a mesma estrutura
+      if (onProgress) onProgress('Limpando registros antigos no servidor (Otimizado)...', 15);
+      console.log('Limpando registros via recriação de coleção...');
       
-      let hasMore = true;
-      let page = 1;
-      let totalDeleted = 0;
-      
-      while (hasMore) {
-        const oldRecords = await pb.collection('buscapac53_pacientes').getList(page, 500, { fields: 'id' });
-        if (oldRecords.items.length === 0) {
-          hasMore = false;
-          break;
-        }
+      try {
+        const collection = await pb.collections.getOne('buscapac53_pacientes');
+        const schemaClone = JSON.parse(JSON.stringify(collection));
+        delete schemaClone.id;
+        delete schemaClone.created;
+        delete schemaClone.updated;
         
-        // Deletar em lotes maiores (50 por vez para não estourar a conexão)
-        for (let i = 0; i < oldRecords.items.length; i += 50) {
-          const batch = oldRecords.items.slice(i, i + 50);
-          await Promise.all(batch.map(record => pb.collection('buscapac53_pacientes').delete(record.id)));
-          totalDeleted += batch.length;
-          
-          if (onProgress) {
-            // A limpeza representa de 15% a 30% do progresso total (estimativa)
-            onProgress(`Limpando banco de dados... (${totalDeleted} apagados)`, 15 + Math.min(15, Math.floor(totalDeleted / 500)));
+        await pb.collections.delete(collection.id);
+        // Aguarda um momento para garantir que a deleção foi processada pelo SQLite
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        await pb.collections.create(schemaClone);
+        console.log('Coleção recriada com sucesso!');
+      } catch (err) {
+        console.error('Erro ao recriar a coleção, caindo para o método tradicional de deleção...', err);
+        // Fallback para deleção tradicional caso falhe
+        let hasMore = true;
+        let page = 1;
+        let totalDeleted = 0;
+        
+        while (hasMore) {
+          const oldRecords = await pb.collection('buscapac53_pacientes').getList(page, 500, { fields: 'id' });
+          if (oldRecords.items.length === 0) {
+            hasMore = false;
+            break;
           }
-        }
-        
-        if (oldRecords.items.length < 500) {
-          hasMore = false;
+          
+          for (let i = 0; i < oldRecords.items.length; i += 50) {
+            const batch = oldRecords.items.slice(i, i + 50);
+            await Promise.all(batch.map(record => pb.collection('buscapac53_pacientes').delete(record.id)));
+            totalDeleted += batch.length;
+            
+            if (onProgress) {
+              onProgress(`Limpando banco de dados... (${totalDeleted} apagados)`, 15 + Math.min(15, Math.floor(totalDeleted / 500)));
+            }
+          }
+          
+          if (oldRecords.items.length < 500) {
+            hasMore = false;
+          }
         }
       }
 
