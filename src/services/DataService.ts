@@ -117,13 +117,19 @@ export const DataService = {
       fileName: fileName
     };
 
-    // Persistir local primeiro para busca funcionar mesmo se sync remota falhar.
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    localStorage.setItem(UPDATE_KEY, now);
-    
-    const history = DataService.getHistory();
-    const updatedHistory = [newEntry, ...history].slice(0, 5);
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(updatedHistory));
+    // Tenta salvar no localStorage, se falhar por quota, apenas loga e continua com o DB
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      localStorage.setItem(UPDATE_KEY, now);
+      
+      const history = DataService.getHistory();
+      const updatedHistory = [newEntry, ...history].slice(0, 5);
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(updatedHistory));
+    } catch (e) {
+      console.warn('Erro ao salvar no localStorage (Quota excedida). Ignorando cache local.', e);
+      // Limpa o cache antigo que estourou limite
+      localStorage.removeItem(STORAGE_KEY);
+    }
 
     // 1. Sincronizar com PocketBase primeiro
     try {
