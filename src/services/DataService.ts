@@ -109,13 +109,15 @@ export const DataService = {
     }
   },
 
-  saveData: async (data: PatientData[], fileName: string = 'arquivo.csv') => {
+  saveData: async (data: PatientData[], fileName: string = 'arquivo.csv', onProgress?: (status: string, percentage: number) => void) => {
     const now = new Date().toLocaleString();
     const newEntry: UploadHistory = {
       date: now,
       count: data.length,
       fileName: fileName
     };
+
+    if (onProgress) onProgress('Salvando no cache local...', 5);
 
     // Tenta salvar no localStorage, se falhar por quota, apenas loga e continua com o DB
     try {
@@ -133,6 +135,7 @@ export const DataService = {
 
     // 1. Sincronizar com PocketBase primeiro
     try {
+      if (onProgress) onProgress('Autenticando com o servidor...', 10);
       console.log('Iniciando sincronização com PocketBase...');
       await DataService.authenticate();
       
@@ -140,11 +143,13 @@ export const DataService = {
       await pb.collection('buscapac53_historico').create(newEntry);
 
       // Limpeza: Buscar todos e deletar (Otimizado para grandes volumes)
+      if (onProgress) onProgress('Limpando registros antigos no servidor...', 15);
       console.log('Limpando registros antigos...');
-      // Usar a API nativa do PB para apagar a coleção inteira e recriar ou truncar se possível.
-      // Como não há truncate nativo, buscamos apenas os IDs.
+      
       let hasMore = true;
       let page = 1;
+      let totalDeleted = 0;
+      
       while (hasMore) {
         const oldRecords = await pb.collection('buscapac53_pacientes').getList(page, 500, { fields: 'id' });
         if (oldRecords.items.length === 0) {
@@ -156,6 +161,12 @@ export const DataService = {
         for (let i = 0; i < oldRecords.items.length; i += 50) {
           const batch = oldRecords.items.slice(i, i + 50);
           await Promise.all(batch.map(record => pb.collection('buscapac53_pacientes').delete(record.id)));
+          totalDeleted += batch.length;
+          
+          if (onProgress) {
+            // A limpeza representa de 15% a 30% do progresso total (estimativa)
+            onProgress(`Limpando banco de dados... (${totalDeleted} apagados)`, 15 + Math.min(15, Math.floor(totalDeleted / 500)));
+          }
         }
         
         if (oldRecords.items.length < 500) {
@@ -164,7 +175,9 @@ export const DataService = {
       }
 
       // Inserir novos em blocos maiores para performance com arquivos pesados
+      if (onProgress) onProgress(`Enviando ${data.length} novos registros...`, 30);
       console.log(`Enviando ${data.length} novos registros...`);
+      
       const batchSize = 100; // Aumentado para 100 para acelerar grandes uploads
       for (let i = 0; i < data.length; i += batchSize) {
         const batch = data.slice(i, i + batchSize);
@@ -184,6 +197,12 @@ export const DataService = {
           }
         }));
         
+        if (onProgress) {
+          // O envio representa de 30% a 100% do progresso
+          const percent = 30 + Math.floor((i / data.length) * 70);
+          onProgress(`Enviando registros para o servidor... (${i} de ${data.length})`, percent);
+        }
+        
         // Pequena pausa para não sobrecarregar o servidor
         if (i % 1000 === 0) {
             console.log(`Progresso: ${i} de ${data.length}...`);
@@ -191,9 +210,12 @@ export const DataService = {
         }
       }
 
+      if (onProgress) onProgress('Sincronização concluída com sucesso!', 100);
       console.log('Sincronização PocketBase concluída!');
     } catch (error) {
+      if (onProgress) onProgress('Erro ao enviar para o servidor. Tente novamente.', 0);
       console.warn('Falha na sincronização PocketBase. Base local mantida.', error);
+      throw error;
     }
   },
 

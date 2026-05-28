@@ -14,6 +14,21 @@
   --color-surface-container: #e7eeff;
 }
 
+@layer utilities {
+  .clip-path-slant {
+    clip-path: polygon(0 0, 100% 0, 100% 80%, 0 100%);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
 body {
   @apply font-inter bg-background text-on-surface;
 }
