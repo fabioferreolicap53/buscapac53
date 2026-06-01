@@ -70,28 +70,24 @@ export default function CsvUpload() {
             // Limpeza profunda de aspas e espaços
             const clean = row.map(val => (val || '').trim().replace(/^"|"$/g, '').trim());
 
-            // Função para converter data de DD/MM/YYYY para YYYY-MM-DD
+            // Função para converter data para DD/MM/YYYY (texto)
             const formatDate = (dateStr: string) => {
               if (!dateStr) return '';
               
               // Se já estiver no formato YYYY-MM-DD
               if (dateStr.match(/^\d{4}-\d{2}-\d{2}/)) {
-                 return `${dateStr.substring(0, 10)} 12:00:00.000Z`;
+                 const p = dateStr.substring(0, 10).split('-');
+                 return `${p[2]}/${p[1]}/${p[0]}`;
               }
 
               const parts = dateStr.split('/');
               if (parts.length === 3) {
-                // Checar se é data válida
-                const year = parseInt(parts[2]);
-                const month = parseInt(parts[1]);
-                const day = parseInt(parts[0]);
-                
-                if (year > 1900 && year < 2100 && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
-                  return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')} 12:00:00.000Z`; 
-                }
+                const day = parts[0].padStart(2, '0');
+                const month = parts[1].padStart(2, '0');
+                const year = parts[2];
+                return `${day}/${month}/${year}`;
               }
-              // Retornar vazio se não bater pra não dar 400 no PocketBase
-              return '';
+              return dateStr;
             };
 
             try {
