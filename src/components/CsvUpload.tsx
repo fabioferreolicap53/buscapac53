@@ -67,22 +67,25 @@ export default function CsvUpload() {
 
             if (row.length < 14) continue;
 
+            // Limpeza profunda de aspas e espaços
+            const clean = row.map(val => (val || '').trim().replace(/^"|"$/g, '').trim());
+
             try {
               await pb.collection('buscapac53_pacientes').create({
-                NOME_UNIDADE_DE_SAUDE: row[0] || '',
-                NOME_EQUIPE_DE_SAUDE: row[1] || '',
-                CODIGO_MICROAREA: row[2] || '',
-                N_CNS_DA_PESSOA_CADASTRADA: row[3] || '',
-                NOME_DA_PESSOA_CADASTRADA: row[4] || '',
-                NOME_DA_MAE_PESSOA_CADASTRADA: row[5] || '',
-                DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO: row[6] || '',
-                SITUACAO_USUARIO: row[7] || '',
-                SEXO: row[8] || '',
-                DATA_DE_NASCIMENTO: row[9] || '',
-                TIPO_DE_LOGRADOURO: row[10] || '',
-                LOGRADOURO: row[11] || '',
-                CEP_LOGRADOURO: row[12] || '',
-                BAIRRO_DE_MORADIA: row[13] || '',
+                NOME_UNIDADE_DE_SAUDE: clean[0],
+                NOME_EQUIPE_DE_SAUDE: clean[1],
+                CODIGO_MICROAREA: clean[2],
+                N_CNS_DA_PESSOA_CADASTRADA: clean[3],
+                NOME_DA_PESSOA_CADASTRADA: clean[4],
+                NOME_DA_MAE_PESSOA_CADASTRADA: clean[5],
+                DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO: clean[6],
+                SITUACAO_USUARIO: clean[7],
+                SEXO: clean[8],
+                DATA_DE_NASCIMENTO: clean[9],
+                TIPO_DE_LOGRADOURO: clean[10],
+                LOGRADOURO: clean[11],
+                CEP_LOGRADOURO: clean[12],
+                BAIRRO_DE_MORADIA: clean[13],
               }, { $autoCancel: false });
               
               totalProcessed++;
