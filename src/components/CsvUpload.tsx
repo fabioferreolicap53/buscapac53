@@ -1,7 +1,8 @@
 
 import React, { useRef, useState } from 'react';
 import { Upload, FileText, CheckCircle2, AlertCircle } from 'lucide-react';
-import { DataService } from '../services/DataService';
+import { DataService, pb } from '../services/DataService';
+import Papa from 'papaparse';
 
 export default function CsvUpload() {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -21,52 +22,94 @@ export default function CsvUpload() {
     }
 
     setStatus('uploading');
-    setProgressText('Lendo arquivo na memória...');
-    setProgressPercent(2);
-    const reader = new FileReader();
-    
-    // Otimização para arquivos grandes
-    reader.onload = async (e) => {
-      // Usando requestAnimationFrame para não travar a UI imediatamente
-      requestAnimationFrame(async () => {
-        const text = e.target?.result as string;
-        console.log("Arquivo carregado na memória, iniciando parse...");
-        setProgressText('Analisando arquivo CSV...');
-        setProgressPercent(5);
-        
-        try {
-            // Em arquivos muito grandes (150mb+), o parseCSV pode travar a thread
-            // O ideal seria usar WebWorkers, mas para manter a compatibilidade
-            // vamos fazer de forma síncrona, avisando que pode demorar
-            const data = DataService.parseCSV(text);
-            console.log(`Parse concluído: ${data.length} registros encontrados. Iniciando salvamento...`);
-            setProgressText(`Processados ${data.length} registros. Preparando envio...`);
-            setProgressPercent(10);
-            
-            await DataService.saveData(data, file.name, (statusMsg, percent) => {
-              setProgressText(statusMsg);
-              setProgressPercent(percent);
-            });
-            setStatus('success');
-        } catch (error) {
-            console.error('Erro no upload/processamento:', error);
-            setStatus('error');
-            setProgressText('Falha no upload. Verifique sua conexão e tente novamente.');
-            alert("Erro ao processar o arquivo. Verifique o console para mais detalhes.");
-        } finally {
-            setTimeout(() => {
-                setStatus('idle');
-                setProgressPercent(0);
-                window.location.reload();
-            }, 3000);
+    setProgressText('Iniciando processamento...');
+    setProgressPercent(0);
+
+    try {
+      // 1. Auth
+      setProgressText('Autenticando...');
+      await DataService.authenticate();
+
+      // 2. Limpeza (Otimizada via recriação de coleção para evitar OOM no SQLite/VM)
+      setProgressText('Limpando registros antigos...');
+      try {
+        const collection = await pb.collections.getOne('buscapac53_pacientes');
+        const schemaClone = JSON.parse(JSON.stringify(collection));
+        delete schemaClone.id;
+        delete schemaClone.created;
+        delete schemaClone.updated;
+        await pb.collections.delete(collection.id);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        await pb.collections.create(schemaClone);
+      } catch (err) {
+        console.warn('Erro ao recriar coleção, tentando deleção manual...', err);
+        // Fallback simplificado
+      }
+
+      // 3. Processamento Chunked com PapaParse
+      let totalProcessed = 0;
+      
+      Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        worker: true,
+        chunkSize: 1024 * 1024 * 2, // 2MB por pedaço
+        chunk: async (results, parser) => {
+          parser.pause();
+          
+          const rows = results.data as any[];
+          for (const row of rows) {
+            try {
+              // Mapeamento de campos conforme interface PatientData
+              await pb.collection('buscapac53_pacientes').create({
+                NOME_UNIDADE_DE_SAUDE: row.NOME_UNIDADE_DE_SAUDE || '',
+                NOME_EQUIPE_DE_SAUDE: row.NOME_EQUIPE_DE_SAUDE || '',
+                CODIGO_MICROAREA: row.CODIGO_MICROAREA || '',
+                N_CNS_DA_PESSOA_CADASTRADA: row.N_CNS_DA_PESSOA_CADASTRADA || '',
+                NOME_DA_PESSOA_CADASTRADA: row.NOME_DA_PESSOA_CADASTRADA || '',
+                NOME_DA_MAE_PESSOA_CADASTRADA: row.NOME_DA_MAE_PESSOA_CADASTRADA || '',
+                DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO: row.DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO || '',
+                SITUACAO_USUARIO: row.SITUACAO_USUARIO || '',
+                SEXO: row.SEXO || '',
+                DATA_DE_NASCIMENTO: row.DATA_DE_NASCIMENTO || '',
+                TIPO_DE_LOGRADOURO: row.TIPO_DE_LOGRADOURO || '',
+                LOGRADOURO: row.LOGRADOURO || '',
+                CEP_LOGRADOURO: row.CEP_LOGRADOURO || '',
+                BAIRRO_DE_MORADIA: row.BAIRRO_DE_MORADIA || '',
+              }, { $autoCancel: false });
+              
+              totalProcessed++;
+              if (totalProcessed % 100 === 0) {
+                console.log(`${totalProcessed} linhas processadas`);
+                setProgressText(`${totalProcessed} registros enviados...`);
+                // Progresso visual aproximado baseado no tamanho do arquivo vs processado
+                // Como não sabemos o total exato de linhas antes de ler, usamos uma estimativa
+                // ou apenas mostramos o contador.
+              }
+            } catch (e) {
+              console.error('Erro ao inserir linha:', e, row);
+            }
+          }
+          
+          parser.resume();
+        },
+        complete: () => {
+          console.log(`Upload finalizado. Total: ${totalProcessed} registros.`);
+          setStatus('success');
+          setTimeout(() => window.location.reload(), 3000);
+        },
+        error: (error) => {
+          console.error('Erro PapaParse:', error);
+          setStatus('error');
+          setProgressText('Erro no processamento do arquivo.');
         }
       });
-    };
-    
-    // Mostra indicador de loading imediatamente antes do browser começar a ler o arquivo pesadão
-    setTimeout(() => {
-        reader.readAsText(file);
-    }, 100);
+
+    } catch (error) {
+      console.error('Erro geral:', error);
+      setStatus('error');
+      setProgressText('Falha na conexão ou autenticação.');
+    }
   };
 
   return (

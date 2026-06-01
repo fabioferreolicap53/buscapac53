@@ -25,7 +25,7 @@ export interface UploadHistory {
   fileName: string;
 }
 
-const pb = new PocketBase(import.meta.env.VITE_DB_ADDRESS || 'https://centraldedados.dev.br');
+export const pb = new PocketBase(import.meta.env.VITE_DB_ADDRESS || 'https://centraldedados.dev.br');
 const REMOTE_TIMEOUT_MS = 8000;
 const REMOTE_NAME_PAGE_SIZE = 200;
 const REMOTE_NAME_STOP_WORDS = new Set(['da', 'de', 'do', 'das', 'dos', 'e']);
