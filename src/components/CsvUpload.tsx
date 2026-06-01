@@ -70,31 +70,51 @@ export default function CsvUpload() {
             // Limpeza profunda de aspas e espaços
             const clean = row.map(val => (val || '').trim().replace(/^"|"$/g, '').trim());
 
+            // Função para converter data de DD/MM/YYYY para YYYY-MM-DD
+            const formatDate = (dateStr: string) => {
+              if (!dateStr) return '';
+              const parts = dateStr.split('/');
+              if (parts.length === 3) {
+                return `${parts[2]}-${parts[1]}-${parts[0]} 12:00:00.000Z`; // PB formato datetime padrão
+              }
+              return dateStr;
+            };
+
             try {
-              await pb.collection('buscapac53_pacientes').create({
+              // Limpar objeto de chaves vazias para não quebrar constraints do PB
+              const recordData: Record<string, string> = {
                 NOME_UNIDADE_DE_SAUDE: clean[0],
                 NOME_EQUIPE_DE_SAUDE: clean[1],
                 CODIGO_MICROAREA: clean[2],
                 N_CNS_DA_PESSOA_CADASTRADA: clean[3],
                 NOME_DA_PESSOA_CADASTRADA: clean[4],
                 NOME_DA_MAE_PESSOA_CADASTRADA: clean[5],
-                DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO: clean[6],
+                DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO: formatDate(clean[6]),
                 SITUACAO_USUARIO: clean[7],
                 SEXO: clean[8],
-                DATA_DE_NASCIMENTO: clean[9],
+                DATA_DE_NASCIMENTO: formatDate(clean[9]),
                 TIPO_DE_LOGRADOURO: clean[10],
                 LOGRADOURO: clean[11],
                 CEP_LOGRADOURO: clean[12],
                 BAIRRO_DE_MORADIA: clean[13],
-              }, { $autoCancel: false });
+              };
+
+              // Remover propriedades vazias
+              Object.keys(recordData).forEach(key => {
+                if (recordData[key] === '') {
+                  delete recordData[key];
+                }
+              });
+
+              await pb.collection('buscapac53_pacientes').create(recordData, { $autoCancel: false });
               
               totalProcessed++;
               if (totalProcessed % 100 === 0) {
                 console.log(`${totalProcessed} linhas processadas`);
                 setProgressText(`${totalProcessed} registros enviados...`);
               }
-            } catch (e) {
-              console.error('Erro ao inserir linha:', e, row);
+            } catch (e: any) {
+              console.error('Erro ao inserir linha:', e.response?.data || e.message, row);
             }
           }
           
