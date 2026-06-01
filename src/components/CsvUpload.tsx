@@ -54,6 +54,7 @@ export default function CsvUpload() {
         header: false, // Usar índices para evitar erro de header mismatch
         skipEmptyLines: true,
         worker: false, // Fix "Not implemented" error (worker doesn't support pause/resume well in some builds)
+        encoding: "ISO-8859-1", // Suporte para acentos brasileiros (UTF-8 pode falhar em CSVs BR)
         chunkSize: 1024 * 1024 * 2, // 2MB por pedaço
         chunk: async (results, parser) => {
           parser.pause();
