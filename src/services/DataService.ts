@@ -26,7 +26,7 @@ export interface UploadHistory {
 }
 
 export const pb = new PocketBase(import.meta.env.VITE_DB_ADDRESS || 'https://centraldedados.dev.br');
-const REMOTE_TIMEOUT_MS = 8000;
+const REMOTE_TIMEOUT_MS = 15000; // Aumentado para 15s devido à VM lenta com 1GB RAM
 const REMOTE_NAME_PAGE_SIZE = 200;
 const REMOTE_NAME_STOP_WORDS = new Set(['da', 'de', 'do', 'das', 'dos', 'e']);
 
@@ -60,15 +60,16 @@ const buildRemoteNameFilter = (query: string): string => {
     .split(' ')
     .filter((token) => token.length >= 3 && !REMOTE_NAME_STOP_WORDS.has(token))
     .sort((a, b) => b.length - a.length)
-    .slice(0, 3);
+    .slice(0, 2); // Reduzido para 2 tokens para simplificar a query no SQLite (VM lenta)
 
   if (tokens.length === 0) {
+    // Busca exata curta se não houver tokens longos
     return `NOME_DA_PESSOA_CADASTRADA ~ "${escapeFilterValue(query.trim())}"`;
   }
 
-  return tokens
-    .map((token) => `NOME_DA_PESSOA_CADASTRADA ~ "${escapeFilterValue(token)}"`)
-    .join(' && ');
+  // Usando apenas o primeiro token mais longo para garantir performance na VM de 1GB
+  // Queries complexas com múltiplos '&&' e '~' em tabelas grandes sem índice full-text travam SQLite
+  return `NOME_DA_PESSOA_CADASTRADA ~ "${escapeFilterValue(tokens[0])}"`;
 };
 
 export const DataService = {
