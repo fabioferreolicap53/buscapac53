@@ -3,6 +3,7 @@ import React, { useRef, useState } from 'react';
 import { Upload, FileText, CheckCircle2, AlertCircle } from 'lucide-react';
 import { DataService, pb } from '../services/DataService';
 import Papa from 'papaparse';
+import { normalizeString } from '../utils/stringUtils';
 
 export default function CsvUpload() {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -68,8 +69,11 @@ export default function CsvUpload() {
 
             if (row.length < 14) continue;
 
-            // Limpeza profunda de aspas e espaços
-            const clean = row.map(val => (val || '').trim().replace(/^"|"$/g, '').trim());
+            // Limpeza profunda: aspas, espaços e normalização de strings (acentos, chars especiais)
+            const clean = row.map(val => {
+              const raw = (val || '').trim().replace(/^"|"$/g, '').trim();
+              return normalizeString(raw);
+            });
 
             // Função para converter data para DD/MM/YYYY (texto)
             const formatDate = (dateStr: string) => {

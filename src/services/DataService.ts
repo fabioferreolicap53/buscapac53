@@ -56,19 +56,19 @@ const escapeFilterValue = (value: string): string => {
 };
 
 const buildRemoteNameFilter = (query: string): string => {
-  const tokens = normalizeString(query)
+  const normalizedQuery = normalizeString(query);
+  const tokens = normalizedQuery
     .split(' ')
-    .filter((token) => token.length >= 3 && !REMOTE_NAME_STOP_WORDS.has(token))
+    .filter((token) => token.length >= 3 && !REMOTE_NAME_STOP_WORDS.has(token.toLowerCase()))
     .sort((a, b) => b.length - a.length)
     .slice(0, 2); // Reduzido para 2 tokens para simplificar a query no SQLite (VM lenta)
 
   if (tokens.length === 0) {
     // Busca exata curta se não houver tokens longos
-    return `NOME_DA_PESSOA_CADASTRADA ~ "${escapeFilterValue(query.trim())}"`;
+    return `NOME_DA_PESSOA_CADASTRADA ~ "${escapeFilterValue(normalizedQuery)}"`;
   }
 
-  // Usando apenas o primeiro token mais longo para garantir performance na VM de 1GB
-  // Queries complexas com múltiplos '&&' e '~' em tabelas grandes sem índice full-text travam SQLite
+  // A busca no PocketBase precisa ser flexível (case-insensitive e acentos já foram limpos no banco)
   return `NOME_DA_PESSOA_CADASTRADA ~ "${escapeFilterValue(tokens[0])}"`;
 };
 
@@ -257,14 +257,13 @@ export const DataService = {
         );
 
         return (records.items as unknown as PatientData[]).filter((patient) => {
+          // Os dados no banco já estão normalizados pelo CsvUpload.
+          // Mas garantimos que a busca também ignore acentos e case.
           const patientName = normalizeString(patient.NOME_DA_PESSOA_CADASTRADA);
           const nameParts = patientName.split(' ');
           
-          return tokens.every((token, index) => {
-            if (index === tokens.length - 1) {
-              return nameParts.some(part => part.startsWith(token));
-            }
-            return nameParts.includes(token);
+          return tokens.every((token) => {
+            return nameParts.some(part => part.includes(token));
           });
         });
       }
