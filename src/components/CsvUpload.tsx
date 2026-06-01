@@ -48,43 +48,47 @@ export default function CsvUpload() {
 
       // 3. Processamento Chunked com PapaParse
       let totalProcessed = 0;
+      const startTime = Date.now();
       
       Papa.parse(file, {
-        header: true,
+        header: false, // Usar índices para evitar erro de header mismatch
         skipEmptyLines: true,
-        worker: true,
+        worker: false, // Fix "Not implemented" error (worker doesn't support pause/resume well in some builds)
         chunkSize: 1024 * 1024 * 2, // 2MB por pedaço
         chunk: async (results, parser) => {
           parser.pause();
           
-          const rows = results.data as any[];
+          const rows = results.data as string[][];
           for (const row of rows) {
+            // Pular header se for a primeira linha do arquivo
+            if (totalProcessed === 0 && row[0]?.toLowerCase().includes('unidade')) {
+              continue;
+            }
+
+            if (row.length < 14) continue;
+
             try {
-              // Mapeamento de campos conforme interface PatientData
               await pb.collection('buscapac53_pacientes').create({
-                NOME_UNIDADE_DE_SAUDE: row.NOME_UNIDADE_DE_SAUDE || '',
-                NOME_EQUIPE_DE_SAUDE: row.NOME_EQUIPE_DE_SAUDE || '',
-                CODIGO_MICROAREA: row.CODIGO_MICROAREA || '',
-                N_CNS_DA_PESSOA_CADASTRADA: row.N_CNS_DA_PESSOA_CADASTRADA || '',
-                NOME_DA_PESSOA_CADASTRADA: row.NOME_DA_PESSOA_CADASTRADA || '',
-                NOME_DA_MAE_PESSOA_CADASTRADA: row.NOME_DA_MAE_PESSOA_CADASTRADA || '',
-                DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO: row.DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO || '',
-                SITUACAO_USUARIO: row.SITUACAO_USUARIO || '',
-                SEXO: row.SEXO || '',
-                DATA_DE_NASCIMENTO: row.DATA_DE_NASCIMENTO || '',
-                TIPO_DE_LOGRADOURO: row.TIPO_DE_LOGRADOURO || '',
-                LOGRADOURO: row.LOGRADOURO || '',
-                CEP_LOGRADOURO: row.CEP_LOGRADOURO || '',
-                BAIRRO_DE_MORADIA: row.BAIRRO_DE_MORADIA || '',
+                NOME_UNIDADE_DE_SAUDE: row[0] || '',
+                NOME_EQUIPE_DE_SAUDE: row[1] || '',
+                CODIGO_MICROAREA: row[2] || '',
+                N_CNS_DA_PESSOA_CADASTRADA: row[3] || '',
+                NOME_DA_PESSOA_CADASTRADA: row[4] || '',
+                NOME_DA_MAE_PESSOA_CADASTRADA: row[5] || '',
+                DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO: row[6] || '',
+                SITUACAO_USUARIO: row[7] || '',
+                SEXO: row[8] || '',
+                DATA_DE_NASCIMENTO: row[9] || '',
+                TIPO_DE_LOGRADOURO: row[10] || '',
+                LOGRADOURO: row[11] || '',
+                CEP_LOGRADOURO: row[12] || '',
+                BAIRRO_DE_MORADIA: row[13] || '',
               }, { $autoCancel: false });
               
               totalProcessed++;
               if (totalProcessed % 100 === 0) {
                 console.log(`${totalProcessed} linhas processadas`);
                 setProgressText(`${totalProcessed} registros enviados...`);
-                // Progresso visual aproximado baseado no tamanho do arquivo vs processado
-                // Como não sabemos o total exato de linhas antes de ler, usamos uma estimativa
-                // ou apenas mostramos o contador.
               }
             } catch (e) {
               console.error('Erro ao inserir linha:', e, row);
@@ -93,8 +97,20 @@ export default function CsvUpload() {
           
           parser.resume();
         },
-        complete: () => {
+        complete: async () => {
           console.log(`Upload finalizado. Total: ${totalProcessed} registros.`);
+          
+          // 4. Registrar histórico
+          try {
+            await pb.collection('buscapac53_historico').create({
+              date: new Date().toLocaleString(),
+              count: totalProcessed,
+              fileName: file.name
+            });
+          } catch (hErr) {
+            console.error('Erro ao salvar histórico:', hErr);
+          }
+
           setStatus('success');
           setTimeout(() => window.location.reload(), 3000);
         },
