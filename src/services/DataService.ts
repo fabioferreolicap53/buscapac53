@@ -278,10 +278,27 @@ export const DataService = {
     await DataService.authenticate();
     try {
       const collection = await pb.collections.getOne('buscapac53_pacientes');
+      
+      // Remove min/max length limits from schema fields
+      const schemaNoLimits = collection.schema.map((field: any) => {
+        if (field.type === 'text') {
+          return {
+            ...field,
+            options: {
+              ...field.options,
+              min: null,
+              max: null,
+              pattern: ''
+            }
+          };
+        }
+        return field;
+      });
+
       const schemaClone = {
         name: collection.name,
         type: collection.type,
-        schema: collection.schema,
+        schema: schemaNoLimits,
         listRule: collection.listRule,
         viewRule: collection.viewRule,
         createRule: collection.createRule,
