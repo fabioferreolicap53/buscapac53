@@ -125,7 +125,7 @@ export const DataService = {
       localStorage.setItem(UPDATE_KEY, now);
       
       const history = DataService.getHistory();
-      const updatedHistory = [newEntry, ...history].slice(0, 5);
+      const updatedHistory = [newEntry, ...history].slice(0, 3);
       localStorage.setItem(HISTORY_KEY, JSON.stringify(updatedHistory));
     } catch (e) {
       console.warn('Erro ao salvar no localStorage (Quota excedida).', e);
@@ -237,7 +237,7 @@ export const DataService = {
       await DataService.authenticate();
       
       // 1. Buscar histórico do PocketBase
-      const historyRecords = await pb.collection('buscapac53_historico').getList(1, 5, {
+      const historyRecords = await pb.collection('buscapac53_historico').getList(1, 3, {
         sort: '-created',
       });
       

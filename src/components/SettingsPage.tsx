@@ -139,7 +139,7 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
                   <p className="text-xs text-slate-400 animate-pulse font-bold">Buscando histórico...</p>
                 </div>
               ) : history.length > 0 ? (
-                history.map((item, i) => (
+                history.slice(0, 3).map((item, i) => (
                   <div key={i} className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex flex-col gap-3 group hover:border-blue-200 transition-colors">
                     <div className="flex items-center justify-between">
                       <div className="flex flex-col">
