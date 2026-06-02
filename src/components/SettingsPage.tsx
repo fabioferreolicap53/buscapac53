@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Database, Clock, ArrowLeft, ShieldCheck, AlertCircle, ListOrdered, History, Info } from 'lucide-react';
-import { DataService } from '../services/DataService';
+import { DataService, UploadHistory } from '../services/DataService';
 import CsvUpload from './CsvUpload';
 
 interface SettingsPageProps {
@@ -8,9 +8,23 @@ interface SettingsPageProps {
 }
 
 export default function SettingsPage({ onBack }: SettingsPageProps) {
-  const lastUpdate = DataService.getLastUpdate();
-  const dataCount = DataService.getData().length;
-  const history = DataService.getHistory();
+  const [lastUpdate, setLastUpdate] = useState<string | null>(DataService.getLastUpdate());
+  const [dataCount, setDataCount] = useState<number>(DataService.getTotalCount());
+  const [history, setHistory] = useState<UploadHistory[]>(DataService.getHistory());
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const syncData = async () => {
+      const result = await DataService.syncFromRemote();
+      if (result) {
+        setLastUpdate(result.lastUpdate);
+        setDataCount(result.totalCount);
+        setHistory(result.history);
+      }
+      setLoading(false);
+    };
+    syncData();
+  }, []);
 
   return (
     <div className="w-full max-w-5xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
@@ -45,7 +59,9 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
               <div className="bg-white/5 p-6 rounded-2xl border border-white/5 backdrop-blur-md">
                 <p className="text-[10px] font-black text-white/30 uppercase tracking-[0.2em] mb-2">Total de Registros</p>
                 <div className="flex items-end gap-2">
-                  <p className="text-4xl font-black text-white">{dataCount.toLocaleString()}</p>
+                  <p className="text-4xl font-black text-white">
+                    {loading ? '...' : dataCount.toLocaleString()}
+                  </p>
                   <p className="text-white/40 text-xs mb-1.5 font-bold">pacientes</p>
                 </div>
               </div>
@@ -54,7 +70,9 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
                 <p className="text-[10px] font-black text-white/30 uppercase tracking-[0.2em] mb-2">Última Sincronização</p>
                 <div className="flex items-center gap-3">
                   <Clock className="text-white/40" size={20} />
-                  <p className="text-lg font-bold text-white/90">{lastUpdate || 'Nenhum dado'}</p>
+                  <p className="text-lg font-bold text-white/90">
+                    {loading ? 'Sincronizando...' : (lastUpdate || 'Nenhum dado')}
+                  </p>
                 </div>
               </div>
             </div>
@@ -116,7 +134,11 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
             </h3>
             
             <div className="space-y-4">
-              {history.length > 0 ? (
+              {loading ? (
+                <div className="py-10 text-center">
+                  <p className="text-xs text-slate-400 animate-pulse font-bold">Buscando histórico...</p>
+                </div>
+              ) : history.length > 0 ? (
                 history.map((item, i) => (
                   <div key={i} className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex flex-col gap-3 group hover:border-blue-200 transition-colors">
                     <div className="flex items-center justify-between">

@@ -232,6 +232,48 @@ export const DataService = {
     return history ? JSON.parse(history) : [];
   },
 
+  syncFromRemote: async () => {
+    try {
+      await DataService.authenticate();
+      
+      // 1. Buscar histórico do PocketBase
+      const historyRecords = await pb.collection('buscapac53_historico').getList(1, 5, {
+        sort: '-created',
+      });
+      
+      const history: UploadHistory[] = historyRecords.items.map(item => ({
+        date: item.date,
+        count: item.count,
+        fileName: item.fileName
+      }));
+
+      // 2. Buscar contagem total de pacientes
+      const patientsResult = await pb.collection('buscapac53_pacientes').getList(1, 1, {
+        fields: 'id',
+      });
+      const totalCount = patientsResult.totalItems;
+
+      // 3. Atualizar localStorage
+      if (history.length > 0) {
+        localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+        localStorage.setItem(UPDATE_KEY, history[0].date);
+      }
+      
+      // Armazenar contagem total em um novo campo ou usar o histórico
+      localStorage.setItem('buscapac_total_count', totalCount.toString());
+      
+      return { history, totalCount, lastUpdate: history[0]?.date };
+    } catch (error) {
+      console.error('Erro ao sincronizar do PocketBase:', error);
+      return null;
+    }
+  },
+
+  getTotalCount: (): number => {
+    const count = localStorage.getItem('buscapac_total_count');
+    return count ? parseInt(count) : 0;
+  },
+
   truncateCollection: async () => {
     await DataService.authenticate();
     try {
