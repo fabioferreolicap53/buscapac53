@@ -31,106 +31,79 @@ export default function CsvUpload() {
       setProgressText('Autenticando...');
       await DataService.authenticate();
 
-      // 2. Limpeza (Otimizada via recriação de coleção para evitar OOM no SQLite/VM)
+      // 2. Limpeza via DataService
       setProgressText('Limpando registros antigos...');
-      try {
-        const collection = await pb.collections.getOne('buscapac53_pacientes');
-        const schemaClone = JSON.parse(JSON.stringify(collection));
-        delete schemaClone.id;
-        delete schemaClone.created;
-        delete schemaClone.updated;
-        await pb.collections.delete(collection.id);
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        await pb.collections.create(schemaClone);
-      } catch (err) {
-        console.warn('Erro ao recriar coleção, tentando deleção manual...', err);
-        // Fallback simplificado
-      }
+      await DataService.truncateCollection();
 
       // 3. Processamento Chunked com PapaParse
       let totalProcessed = 0;
-      const startTime = Date.now();
       
       Papa.parse(file, {
-        header: false, // Usar índices para evitar erro de header mismatch
+        header: false,
         skipEmptyLines: true,
-        worker: false, // Fix "Not implemented" error (worker doesn't support pause/resume well in some builds)
-        encoding: "CP1252", // Windows-1252/CP1252 para CSVs gerados pelo Excel/Windows no Brasil
-        chunkSize: 1024 * 1024 * 2, // 2MB por pedaço
+        worker: false,
+        encoding: "CP1252",
+        chunkSize: 1024 * 1024 * 2,
         chunk: async (results, parser) => {
           parser.pause();
           
           const rows = results.data as string[][];
+          const batch = [];
+
           for (const row of rows) {
-            // Pular header se for a primeira linha do arquivo
             if (totalProcessed === 0 && row[0]?.toLowerCase().includes('unidade')) {
               continue;
             }
 
             if (row.length < 14) continue;
 
-            // Limpeza profunda: aspas, espaços e normalização de strings (acentos, chars especiais)
             const clean = row.map(val => {
               const raw = (val || '').trim().replace(/^"|"$/g, '').trim();
               return normalizeString(raw);
             });
 
-            // Função para converter data para DD/MM/YYYY (texto)
             const formatDate = (dateStr: string) => {
               if (!dateStr) return '';
-              
-              // Se já estiver no formato YYYY-MM-DD
               if (dateStr.match(/^\d{4}-\d{2}-\d{2}/)) {
                  const p = dateStr.substring(0, 10).split('-');
                  return `${p[2]}/${p[1]}/${p[0]}`;
               }
-
               const parts = dateStr.split('/');
               if (parts.length === 3) {
-                const day = parts[0].padStart(2, '0');
-                const month = parts[1].padStart(2, '0');
-                const year = parts[2];
-                return `${day}/${month}/${year}`;
+                return `${parts[0].padStart(2, '0')}/${parts[1].padStart(2, '0')}/${parts[2]}`;
               }
               return dateStr;
             };
 
-            try {
-              // Limpar objeto de chaves vazias para não quebrar constraints do PB
-              const recordData: Record<string, string> = {
-                NOME_UNIDADE_DE_SAUDE: clean[0],
-                NOME_EQUIPE_DE_SAUDE: clean[1],
-                CODIGO_MICROAREA: clean[2],
-                N_CNS_DA_PESSOA_CADASTRADA: clean[3],
-                NOME_DA_PESSOA_CADASTRADA: clean[4],
-                NOME_DA_MAE_PESSOA_CADASTRADA: clean[5],
-                DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO: formatDate(clean[6]),
-                SITUACAO_USUARIO: clean[7],
-                SEXO: clean[8],
-                DATA_DE_NASCIMENTO: formatDate(clean[9]),
-                TIPO_DE_LOGRADOURO: clean[10],
-                LOGRADOURO: clean[11],
-                CEP_LOGRADOURO: clean[12],
-                BAIRRO_DE_MORADIA: clean[13],
-              };
+            const recordData: any = {
+              NOME_UNIDADE_DE_SAUDE: clean[0],
+              NOME_EQUIPE_DE_SAUDE: clean[1],
+              CODIGO_MICROAREA: clean[2],
+              N_CNS_DA_PESSOA_CADASTRADA: clean[3],
+              NOME_DA_PESSOA_CADASTRADA: clean[4],
+              NOME_DA_MAE_PESSOA_CADASTRADA: clean[5],
+              DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO: formatDate(clean[6]),
+              SITUACAO_USUARIO: clean[7],
+              SEXO: clean[8],
+              DATA_DE_NASCIMENTO: formatDate(clean[9]),
+              TIPO_DE_LOGRADOURO: clean[10],
+              LOGRADOURO: clean[11],
+              CEP_LOGRADOURO: clean[12],
+              BAIRRO_DE_MORADIA: clean[13],
+            };
 
-              // Remover propriedades vazias
-              Object.keys(recordData).forEach(key => {
-                if (recordData[key] === '') {
-                  delete recordData[key];
-                }
-              });
+            batch.push(DataService.createPatient(recordData).catch(e => console.error('Erro na linha:', e)));
+            totalProcessed++;
 
-              await pb.collection('buscapac53_pacientes').create(recordData, { $autoCancel: false });
-              
-              totalProcessed++;
-              if (totalProcessed % 100 === 0) {
-                console.log(`${totalProcessed} linhas processadas`);
-                setProgressText(`${totalProcessed} registros enviados...`);
-              }
-            } catch (e: any) {
-              console.error('Erro ao inserir linha:', e.response?.data || e.message, row);
+            if (batch.length >= 25) { // Lotes menores para a VM lenta
+              await Promise.all(batch);
+              batch.length = 0;
+              setProgressText(`${totalProcessed} registros enviados...`);
             }
+          }
+          
+          if (batch.length > 0) {
+            await Promise.all(batch);
           }
           
           parser.resume();

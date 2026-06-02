@@ -120,7 +120,6 @@ export const DataService = {
 
     if (onProgress) onProgress('Salvando no cache local...', 5);
 
-    // Tenta salvar no localStorage, se falhar por quota, apenas loga e continua com o DB
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
       localStorage.setItem(UPDATE_KEY, now);
@@ -129,107 +128,45 @@ export const DataService = {
       const updatedHistory = [newEntry, ...history].slice(0, 5);
       localStorage.setItem(HISTORY_KEY, JSON.stringify(updatedHistory));
     } catch (e) {
-      console.warn('Erro ao salvar no localStorage (Quota excedida). Ignorando cache local.', e);
-      // Limpa o cache antigo que estourou limite
+      console.warn('Erro ao salvar no localStorage (Quota excedida).', e);
       localStorage.removeItem(STORAGE_KEY);
     }
 
-    // 1. Sincronizar com PocketBase primeiro
     try {
       if (onProgress) onProgress('Autenticando com o servidor...', 10);
-      console.log('Iniciando sincronização com PocketBase...');
       await DataService.authenticate();
       
-      // Criar registro de histórico no PB
-      await pb.collection('buscapac53_historico').create(newEntry);
-
-      // Limpeza ultra rápida: Deletar a coleção inteira e recriar com a mesma estrutura
-      if (onProgress) onProgress('Limpando registros antigos no servidor (Otimizado)...', 15);
-      console.log('Limpando registros via recriação de coleção...');
-      
       try {
-        const collection = await pb.collections.getOne('buscapac53_pacientes');
-        const schemaClone = JSON.parse(JSON.stringify(collection));
-        delete schemaClone.id;
-        delete schemaClone.created;
-        delete schemaClone.updated;
-        
-        await pb.collections.delete(collection.id);
-        // Aguarda um momento para garantir que a deleção foi processada pelo SQLite
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        await pb.collections.create(schemaClone);
-        console.log('Coleção recriada com sucesso!');
-      } catch (err) {
-        console.error('Erro ao recriar a coleção, caindo para o método tradicional de deleção...', err);
-        // Fallback para deleção tradicional caso falhe
-        let hasMore = true;
-        let page = 1;
-        let totalDeleted = 0;
-        
-        while (hasMore) {
-          const oldRecords = await pb.collection('buscapac53_pacientes').getList(page, 500, { fields: 'id' });
-          if (oldRecords.items.length === 0) {
-            hasMore = false;
-            break;
-          }
-          
-          for (let i = 0; i < oldRecords.items.length; i += 50) {
-            const batch = oldRecords.items.slice(i, i + 50);
-            await Promise.all(batch.map(record => pb.collection('buscapac53_pacientes').delete(record.id)));
-            totalDeleted += batch.length;
-            
-            if (onProgress) {
-              onProgress(`Limpando banco de dados... (${totalDeleted} apagados)`, 15 + Math.min(15, Math.floor(totalDeleted / 500)));
-            }
-          }
-          
-          if (oldRecords.items.length < 500) {
-            hasMore = false;
-          }
-        }
+        await pb.collection('buscapac53_historico').create(newEntry);
+      } catch (hErr) {
+        console.warn('Erro ao salvar histórico no PB:', hErr);
       }
 
-      // Inserir novos em blocos maiores para performance com arquivos pesados
+      if (onProgress) onProgress('Limpando registros antigos...', 15);
+      await DataService.truncateCollection();
+
       if (onProgress) onProgress(`Enviando ${data.length} novos registros...`, 30);
-      console.log(`Enviando ${data.length} novos registros...`);
       
-      const batchSize = 100; // Aumentado para 100 para acelerar grandes uploads
+      const batchSize = 50; 
       for (let i = 0; i < data.length; i += batchSize) {
         const batch = data.slice(i, i + batchSize);
         await Promise.all(batch.map(async (patient) => {
           try {
-            const pbRecord: Record<string, any> = {};
-            for (const key in patient) {
-              const val = (patient as any)[key];
-              if (val !== undefined && key !== 'id') {
-                pbRecord[key] = val;
-              }
-            }
-            return await pb.collection('buscapac53_pacientes').create(pbRecord, { $autoCancel: false });
+            return await DataService.createPatient(patient);
           } catch (err: any) {
-            console.error('Erro detalhado PB:', err.response?.data || err);
-            // Continua mesmo se um registro falhar para não perder o lote inteiro
+            console.error('Erro no registro:', err.response?.data || err);
           }
         }));
         
         if (onProgress) {
-          // O envio representa de 30% a 100% do progresso
           const percent = 30 + Math.floor((i / data.length) * 70);
-          onProgress(`Enviando registros para o servidor... (${i} de ${data.length})`, percent);
-        }
-        
-        // Pequena pausa para não sobrecarregar o servidor
-        if (i % 1000 === 0) {
-            console.log(`Progresso: ${i} de ${data.length}...`);
-            await new Promise(resolve => setTimeout(resolve, 500));
+          onProgress(`Enviando para o servidor... (${i} de ${data.length})`, percent);
         }
       }
 
-      if (onProgress) onProgress('Sincronização concluída com sucesso!', 100);
-      console.log('Sincronização PocketBase concluída!');
+      if (onProgress) onProgress('Sincronização concluída!', 100);
     } catch (error) {
-      if (onProgress) onProgress('Erro ao enviar para o servidor. Tente novamente.', 0);
-      console.warn('Falha na sincronização PocketBase. Base local mantida.', error);
+      if (onProgress) onProgress('Erro na sincronização.', 0);
       throw error;
     }
   },
@@ -293,6 +230,52 @@ export const DataService = {
   getHistory: (): UploadHistory[] => {
     const history = localStorage.getItem(HISTORY_KEY);
     return history ? JSON.parse(history) : [];
+  },
+
+  truncateCollection: async () => {
+    await DataService.authenticate();
+    try {
+      const collection = await pb.collections.getOne('buscapac53_pacientes');
+      const schemaClone = {
+        name: collection.name,
+        type: collection.type,
+        schema: collection.schema,
+        listRule: collection.listRule,
+        viewRule: collection.viewRule,
+        createRule: collection.createRule,
+        updateRule: collection.updateRule,
+        deleteRule: collection.deleteRule,
+        indexes: collection.indexes,
+        options: collection.options,
+        system: false
+      };
+      
+      await pb.collections.delete(collection.id);
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      await pb.collections.create(schemaClone);
+      return true;
+    } catch (err) {
+      console.error('Erro ao truncar via recriação, tentando deleção manual...', err);
+      let hasMore = true;
+      while (hasMore) {
+        const result = await pb.collection('buscapac53_pacientes').getList(1, 200, { fields: 'id' });
+        if (result.items.length === 0) break;
+        await Promise.all(result.items.map(item => pb.collection('buscapac53_pacientes').delete(item.id)));
+        if (result.items.length < 200) hasMore = false;
+      }
+      return true;
+    }
+  },
+
+  createPatient: async (patient: Partial<PatientData>) => {
+    const pbRecord: Record<string, any> = {};
+    for (const key in patient) {
+      const val = (patient as any)[key];
+      if (val !== undefined && key !== 'id' && val !== '') {
+        pbRecord[key] = val;
+      }
+    }
+    return await pb.collection('buscapac53_pacientes').create(pbRecord, { $autoCancel: false });
   },
 
   parseCSV: (csvText: string): PatientData[] => {
