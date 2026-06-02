@@ -58,8 +58,8 @@ export default function SearchModule() {
         return parts[2] + parts[1] + parts[0];
       };
 
-      const dateA = formatSortDate(a.DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO);
-      const dateB = formatSortDate(b.DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO);
+      const dateA = formatSortDate(a.DATA_ULTIMA_ATUALIZACAO);
+      const dateB = formatSortDate(b.DATA_ULTIMA_ATUALIZACAO);
 
       return dateB.localeCompare(dateA);
     });
@@ -113,114 +113,74 @@ export default function SearchModule() {
     }
   };
 
-  const getStatusStyles = (status: string) => {
-    const s = normalizeString(status || '');
-    if (s.includes('ativo') || s.includes('cadastrado') || s.includes('residente')) {
-      return 'bg-emerald-50 text-emerald-700 border-emerald-200 shadow-[0_0_15px_-3px_rgba(16,185,129,0.3)]';
-    }
-    if (s.includes('obito') || s.includes('falecido')) {
-      return 'bg-slate-50 text-slate-700 border-slate-200 shadow-[0_0_15px_-3px_rgba(71,85,105,0.3)]';
-    }
-    if (s.includes('mudanca') || s.includes('mudou') || s.includes('domicilio')) {
-      return 'bg-blue-50 text-blue-700 border-blue-200 shadow-[0_0_15px_-3px_rgba(59,130,246,0.3)]';
-    }
-    if (s.includes('suspenso') || s.includes('inativo') || s.includes('desativado')) {
-      return 'bg-amber-50 text-amber-700 border-amber-200 shadow-[0_0_15px_-3px_rgba(245,158,11,0.3)]';
-    }
-    return 'bg-slate-50 text-slate-600 border-slate-200 shadow-sm';
-  };
-
   return (
-    <div className="w-full max-w-3xl flex flex-col gap-8">
-      <div className={`w-full bg-white rounded-[1.8rem] shadow-[0_20px_50px_-15px_rgba(0,31,63,0.1)] border border-slate-200/60 overflow-hidden relative group/container transition-all duration-500 ${loading ? 'opacity-70 pointer-events-none' : ''}`}>
-        {/* Luminous Background Effects */}
-        <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-blue-500/20 to-transparent opacity-0 group-hover/container:opacity-100 transition-opacity duration-1000" />
-        <div className="absolute -top-24 -left-24 w-64 h-64 bg-blue-50/50 rounded-full blur-3xl pointer-events-none" />
-        
-        {/* Tabs/Toggle */}
-        <div className="flex bg-slate-50/50 p-1 gap-1 mt-6 mx-8 rounded-2xl border border-slate-100/80 backdrop-blur-sm">
+    <div className="w-full max-w-4xl mx-auto px-2 sm:px-0">
+      {/* Tabs / Search Header */}
+      <div className="flex flex-col sm:flex-row items-center justify-between mb-6 sm:mb-8 gap-4">
+        <div className="flex bg-slate-100 p-1 rounded-2xl w-full sm:w-auto">
           <button
             onClick={() => setActiveTab('name')}
-            disabled={loading}
-            className={`flex-1 py-3 px-4 text-[10px] font-black flex items-center justify-center gap-2 rounded-xl transition-all duration-500 relative tracking-widest ${
-              activeTab === 'name'
-                ? 'text-white bg-[#001f3f] shadow-md'
-                : 'text-slate-400 hover:text-slate-600 hover:bg-white/80'
+            className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-xs font-black tracking-widest transition-all duration-300 ${
+              activeTab === 'name' 
+                ? 'bg-white text-blue-600 shadow-sm ring-1 ring-slate-200' 
+                : 'text-slate-500 hover:text-slate-700'
             }`}
           >
-            <User size={14} strokeWidth={2.5} />
-            NOME DO PACIENTE
+            <User size={14} strokeWidth={3} />
+            NOME
           </button>
           <button
             onClick={() => setActiveTab('cns')}
-            disabled={loading}
-            className={`flex-1 py-3 px-4 text-[10px] font-black flex items-center justify-center gap-2 rounded-xl transition-all duration-500 relative tracking-widest ${
-              activeTab === 'cns'
-                ? 'text-white bg-[#001f3f] shadow-md'
-                : 'text-slate-400 hover:text-slate-600 hover:bg-white/80'
+            className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-xs font-black tracking-widest transition-all duration-300 ${
+              activeTab === 'cns' 
+                ? 'bg-white text-blue-600 shadow-sm ring-1 ring-slate-200' 
+                : 'text-slate-500 hover:text-slate-700'
             }`}
           >
-            <IdCard size={14} strokeWidth={2.5} />
-            NÚMERO DO CNS
+            <IdCard size={14} strokeWidth={3} />
+            CNS
           </button>
         </div>
+      </div>
 
-        {/* Search Input Area */}
-        <div className="px-4 sm:px-8 pb-8 sm:pb-10 pt-6">
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="relative flex-1 group/input">
-              <div className="absolute left-4 sm:left-6 top-1/2 -translate-y-1/2">
-                {loading ? (
-                  <div className="w-5 h-5 border-2 border-[#001f3f]/20 border-t-[#001f3f] rounded-full animate-spin" />
-                ) : (
-                  <Search className="text-slate-400 group-focus-within/input:text-blue-500 transition-colors" size={20} />
-                )}
-              </div>
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                disabled={loading}
-                className="w-full pl-12 sm:pl-14 pr-10 sm:pr-12 py-4 sm:py-5 bg-white border-2 border-slate-200 focus:border-blue-500 rounded-xl sm:rounded-2xl font-manrope text-sm sm:text-base text-slate-800 outline-none transition-all placeholder:text-slate-400 disabled:cursor-not-allowed shadow-sm focus:shadow-md focus:shadow-blue-500/10"
-                spellCheck="false"
-                autoComplete="off"
-                autoCorrect="off"
-                autoCapitalize="off"
-                placeholder={
-                  activeTab === 'name'
-                    ? 'Quem deseja localizar?'
-                    : 'Digite os 15 números...'
-                }
-                type="text"
-              />
-              {query && !loading && (
-                <button
-                  onClick={() => setQuery('')}
-                  className="absolute right-3 sm:right-4 top-1/2 -translate-y-1/2 p-1.5 rounded-full hover:bg-red-50 text-slate-200 hover:text-red-400 transition-colors"
-                >
-                  <X size={16} />
-                </button>
-              )}
-            </div>
-
-            <button 
-              onClick={handleSearch}
-              disabled={loading}
-              className="w-full sm:w-auto bg-[#001f3f] text-white px-8 py-4 sm:py-5 rounded-xl sm:rounded-2xl font-manrope text-[11px] font-black tracking-widest flex items-center justify-center gap-3 shadow-lg shadow-blue-900/10 hover:scale-[1.02] transition-all active:scale-95 group/btn overflow-hidden whitespace-nowrap disabled:opacity-50 disabled:scale-100 disabled:cursor-not-allowed"
-            >
-              {loading ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-                  BUSCANDO...
-                </>
-              ) : (
-                <>
-                  BUSCAR
-                  <ArrowRight className="group-hover/btn:translate-x-1 transition-transform" size={16} strokeWidth={3} />
-                </>
-              )}
-            </button>
+      {/* Search Bar */}
+      <div className="relative group mb-10 sm:mb-16">
+        <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-[2rem] blur opacity-10 group-hover:opacity-20 transition duration-1000 group-focus-within:opacity-30" />
+        <div className="relative flex flex-col sm:flex-row items-center gap-3 bg-white p-2.5 sm:p-3 rounded-[1.8rem] border border-slate-200 shadow-xl shadow-blue-900/5">
+          <div className="flex-1 flex items-center gap-3 sm:gap-4 px-3 sm:px-5 w-full">
+            <Search className="text-slate-400 shrink-0" size={20} strokeWidth={2.5} />
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value.toUpperCase())}
+              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+              placeholder={activeTab === 'name' ? "DIGITE O NOME DO PACIENTE..." : "DIGITE O NÚMERO DO CNS..."}
+              className="w-full bg-transparent border-none focus:ring-0 text-slate-800 placeholder:text-slate-300 font-black text-sm sm:text-base tracking-tight uppercase"
+            />
+            {query && (
+              <button 
+                onClick={() => setQuery('')}
+                className="p-2 hover:bg-slate-100 rounded-full text-slate-400 transition-colors shrink-0"
+              >
+                <X size={16} strokeWidth={3} />
+              </button>
+            )}
           </div>
+          
+          <button
+            onClick={handleSearch}
+            disabled={loading || !query.trim()}
+            className="w-full sm:w-auto flex items-center justify-center gap-3 px-8 py-3.5 sm:py-4 bg-[#001f3f] hover:bg-[#003366] disabled:bg-slate-200 text-white rounded-2xl font-black text-xs sm:text-sm tracking-[0.2em] transition-all duration-300 shadow-lg shadow-blue-900/20 active:scale-95 group/btn"
+          >
+            {loading ? (
+              <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            ) : (
+              <>
+                BUSCAR
+                <ArrowRight className="group-hover/btn:translate-x-1 transition-transform" size={16} strokeWidth={3} />
+              </>
+            )}
+          </button>
         </div>
       </div>
 
@@ -242,19 +202,36 @@ export default function SearchModule() {
           {results.length > 0 ? (
             <div className="grid grid-cols-1 gap-6">
               {results.map((patient, idx) => (
-                <div key={idx} className="bg-white p-5 sm:p-8 rounded-[1.5rem] sm:rounded-[1.8rem] border border-slate-200 shadow-[0_10px_40px_-15px_rgba(0,0,0,0.05)] hover:shadow-[0_30px_60px_-20px_rgba(0,31,63,0.15)] hover:border-blue-100 transition-all duration-500 relative group/card overflow-hidden hover:-translate-y-1">
-                  {/* Subtle Background Glow */}
-                  <div className="absolute -right-20 -top-20 w-64 h-64 bg-blue-50/30 rounded-full blur-3xl opacity-0 group-hover/card:opacity-100 transition-opacity duration-1000 pointer-events-none" />
-                  
-                  <div className="absolute top-0 left-0 w-1.5 h-full bg-gradient-to-b from-blue-400 to-[#001f3f] opacity-0 group-hover/card:opacity-100 transition-opacity duration-500" />
-                  
-                  <div className="flex flex-col gap-5 sm:gap-6 relative z-10">
-                      <div className="flex items-center gap-3 sm:gap-4 overflow-hidden">
-                        <span className={`shrink-0 px-2.5 py-1 text-[8px] sm:text-[9px] font-black rounded-lg uppercase tracking-widest border transition-all duration-500 hover:scale-105 ${getStatusStyles(patient.SITUACAO_USUARIO)}`}>
-                          {patient.SITUACAO_USUARIO}
-                        </span>
-                        <h3 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight break-words">{patient.NOME_DA_PESSOA_CADASTRADA}</h3>
+                <div 
+                  key={getPatientKey(patient)} 
+                  className="bg-white rounded-[2rem] border border-slate-200 shadow-sm hover:shadow-xl hover:border-blue-200 transition-all duration-500 overflow-hidden group/card"
+                  style={{ animationDelay: `${idx * 50}ms` }}
+                >
+                  {/* Top Bar Status */}
+                  <div className="bg-slate-50 px-6 sm:px-8 py-3 border-b border-slate-100 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+                      <span className="text-[10px] font-black text-slate-400 tracking-widest uppercase">{patient.SITUACAO_USUARIO || 'Ativo'}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">{patient.NOME_UNIDADE_DE_SAUDE}</span>
+                    </div>
+                  </div>
+
+                  <div className="p-6 sm:p-8">
+                    <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-6 mb-8">
+                      <div className="flex items-start gap-5">
+                        <div className="w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-blue-200 group-hover/card:scale-110 transition-transform duration-500 shrink-0">
+                          <User size={24} sm:size={28} strokeWidth={2.5} />
+                        </div>
+                        <div className="min-w-0">
+                          <span className="text-[8px] sm:text-[10px] font-black text-blue-600 uppercase tracking-[0.2em] leading-none mb-2 block">Paciente</span>
+                          <h3 className="text-lg sm:text-2xl font-black text-slate-900 tracking-tight leading-tight uppercase truncate">
+                            {patient.NOME_DA_PESSOA_CADASTRADA}
+                          </h3>
+                        </div>
                       </div>
+
                       <div className="flex items-center gap-3 sm:pl-4 sm:border-l border-slate-200">
                         <div className="flex flex-col items-start sm:items-end w-full sm:w-auto">
                           <span className="text-[6px] sm:text-[7px] font-black text-slate-400 uppercase tracking-[0.2em] leading-none mb-1">CARTÃO NACIONAL</span>
@@ -301,87 +278,64 @@ export default function SearchModule() {
                           </div>
                           <div className="min-w-0 flex-1">
                             <p className="text-[7px] sm:text-[8px] font-black uppercase tracking-widest text-slate-500">ÚLTIMA ATUALIZAÇÃO</p>
-                            <p className={`text-[11px] sm:text-xs font-black leading-tight ${patient.DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO ? 'text-slate-800' : 'text-slate-300'}`}>
-                              {patient.DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO || '—'}
+                            <p className={`text-[11px] sm:text-xs font-black leading-tight ${patient.DATA_ULTIMA_ATUALIZACAO ? 'text-slate-800' : 'text-slate-300'}`}>
+                              {patient.DATA_ULTIMA_ATUALIZACAO || '—'}
                             </p>
                           </div>
                         </div>
 
                         <div className="flex items-center gap-3 p-1.5 sm:p-2 rounded-xl border border-transparent hover:border-slate-100 hover:bg-slate-50/50 transition-all group/item">
                           <div className="w-7 h-7 sm:w-8 sm:h-8 shrink-0 rounded-lg bg-emerald-50 flex items-center justify-center text-emerald-600 border border-emerald-100">
-                            <MapPin size={14} className="sm:size-4" />
+                            <Activity size={14} className="sm:size-4" />
                           </div>
                           <div className="min-w-0 flex-1">
-                            <p className="text-[7px] sm:text-[8px] font-black uppercase tracking-widest text-slate-500">Endereço</p>
-                            <p className={`text-[11px] sm:text-xs font-black uppercase break-words leading-tight ${patient.LOGRADOURO ? 'text-slate-800' : 'text-slate-300'}`}>
-                              {patient.LOGRADOURO ? (
-                                <>
-                                  {patient.TIPO_DE_LOGRADOURO} {patient.LOGRADOURO}, {patient.BAIRRO_DE_MORADIA}
-                                  {patient.CEP_LOGRADOURO && <span className="ml-1 text-slate-500 font-bold">• {patient.CEP_LOGRADOURO}</span>}
-                                </>
-                              ) : '—'}
+                            <p className="text-[7px] sm:text-[8px] font-black uppercase tracking-widest text-slate-500">Equipe / Micro</p>
+                            <p className="text-[11px] sm:text-xs font-black text-slate-800 leading-tight">
+                              {patient.NOME_EQUIPE_DE_SAUDE} <span className="text-slate-300 font-bold ml-1">/</span> <span className="text-blue-600 ml-1">{patient.CODIGO_MICROAREA}</span>
                             </p>
                           </div>
                         </div>
                       </div>
 
-                      {/* Info Box (5/12) */}
-                      <div className="lg:col-span-5 relative group/info h-full">
-                        <div className="absolute -top-4 -right-4 w-24 h-24 bg-blue-400/10 rounded-full blur-2xl opacity-0 group-hover/info:opacity-100 transition-opacity duration-700 hidden sm:block" />
-                        <div className="absolute -bottom-4 -left-4 w-24 h-24 bg-indigo-400/10 rounded-full blur-2xl opacity-0 group-hover/info:opacity-100 transition-opacity duration-700 hidden sm:block" />
-                        
-                        <div className="relative h-full bg-slate-100/50 rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-sm flex flex-col justify-between overflow-hidden group-hover/info:border-blue-300 transition-colors duration-500">
-                          <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-blue-500/20 to-transparent opacity-0 group-hover/info:opacity-100 transition-opacity duration-700" />
-                          
-                          <div className="flex items-start gap-4 mb-4">
-                            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-[#001f3f] flex items-center justify-center text-white shadow-sm transition-all duration-500 shrink-0">
-                              <Activity size={14} className="sm:size-4" />
-                            </div>
-                            <div className="min-w-0">
-                              <p className="text-[7px] font-black uppercase tracking-[0.2em] text-slate-400 mb-0.5">Unidade de Saúde</p>
-                              <p className={`text-[11px] sm:text-xs font-black uppercase leading-tight tracking-tight ${patient.NOME_UNIDADE_DE_SAUDE ? 'text-[#001f3f]' : 'text-slate-300'}`}>
-                                {patient.NOME_UNIDADE_DE_SAUDE || '—'}
-                              </p>
-                            </div>
+                      {/* Address Column (5/12) */}
+                      <div className="lg:col-span-5 bg-slate-50/80 rounded-2xl p-4 sm:p-5 border border-slate-100 group-hover/card:bg-white group-hover/card:border-blue-100 transition-all duration-500">
+                        <div className="flex items-center gap-3 mb-4">
+                          <div className="w-8 h-8 rounded-xl bg-white flex items-center justify-center text-blue-600 shadow-sm border border-slate-100 group-hover/card:scale-110 transition-transform">
+                            <MapPin size="16" strokeWidth={2.5} />
                           </div>
-
-                          <div className="flex flex-col sm:flex-row sm:items-center justify-between pt-4 border-t border-slate-200/60 gap-4">
-                            <div className="flex items-center gap-3 min-w-0">
-                              <div className="w-7 h-7 rounded-md bg-slate-200/50 flex items-center justify-center shrink-0">
-                                <Users size={12} className="text-slate-500" />
-                              </div>
-                              <div className="min-w-0">
-                                <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest leading-none mb-0.5">Equipe</p>
-                                <p className={`text-[10px] font-black truncate uppercase tracking-tight ${patient.NOME_EQUIPE_DE_SAUDE && patient.NOME_EQUIPE_DE_SAUDE !== 'SEM EQUIPE' ? 'text-slate-600' : 'text-slate-300'}`}>
-                                  {patient.NOME_EQUIPE_DE_SAUDE && patient.NOME_EQUIPE_DE_SAUDE !== 'SEM EQUIPE' ? patient.NOME_EQUIPE_DE_SAUDE : '—'}
-                                </p>
-                              </div>
+                          <span className="text-[8px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest">Endereço Completo</span>
+                        </div>
+                        
+                        <div className="space-y-3">
+                          <p className="text-xs sm:text-sm font-black text-slate-800 leading-snug uppercase">
+                            {patient.TIPO_DE_LOGRADOURO} {patient.LOGRADOURO}
+                          </p>
+                          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                            <div className="flex flex-col">
+                              <span className="text-[6px] sm:text-[7px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Bairro</span>
+                              <span className="text-[10px] sm:text-xs font-bold text-slate-600 uppercase">{patient.BAIRRO_DE_MORADIA}</span>
                             </div>
-                            
-                            <div className="flex items-center gap-2 bg-slate-200/50 pl-1.5 pr-2.5 py-1 rounded-lg border border-slate-200/60 shrink-0 self-start sm:self-auto">
-                              <div className="w-6 h-6 rounded bg-white flex items-center justify-center shadow-sm">
-                                <MapPin size={10} className="text-slate-400" />
-                              </div>
-                              <div className="flex flex-col items-start">
-                                <span className="text-[6px] font-black text-slate-400 uppercase tracking-tighter leading-none">MA</span>
-                                <div className="flex items-center gap-1">
-                                  <span className={`text-[10px] font-black tabular-nums leading-none ${patient.CODIGO_MICROAREA ? 'text-slate-700' : 'text-slate-300'}`}>
-                                    {patient.CODIGO_MICROAREA || '—'}
-                                  </span>
-                                  <div className={`w-1 h-1 rounded-full ${patient.CODIGO_MICROAREA ? 'bg-emerald-500' : 'bg-slate-200'}`} />
-                                </div>
-                              </div>
+                            <div className="flex flex-col">
+                              <span className="text-[6px] sm:text-[7px] font-black text-slate-400 uppercase tracking-widest mb-0.5">CEP</span>
+                              <span className="text-[10px] sm:text-xs font-bold text-slate-600 tabular-nums">{patient.CEP_LOGRADOURO}</span>
                             </div>
                           </div>
                         </div>
+                      </div>
                     </div>
                   </div>
                 </div>
               ))}
             </div>
           ) : (
-            <div className="bg-slate-50/50 p-12 sm:p-20 rounded-[2rem] sm:rounded-[3rem] border-2 border-dashed border-slate-100 text-center">
-              <p className="text-slate-300 font-black text-[10px] sm:text-xs uppercase tracking-[0.3em]">Nenhum registro localizado</p>
+            <div className="bg-white rounded-[3rem] p-12 sm:p-20 text-center border border-slate-200 shadow-sm animate-in zoom-in-95 duration-700">
+              <div className="w-20 h-20 sm:w-24 sm:h-24 bg-slate-50 rounded-[2rem] flex items-center justify-center mx-auto mb-8 text-slate-200 border border-slate-100 group-hover:scale-110 transition-transform">
+                <Users size={40} sm:size={48} />
+              </div>
+              <h3 className="text-xl sm:text-2xl font-black text-slate-900 mb-4 tracking-tight">NENHUM RESULTADO</h3>
+              <p className="text-xs sm:text-sm text-slate-400 font-medium max-w-xs mx-auto leading-relaxed uppercase tracking-widest">
+                Não encontramos pacientes com o termo <span className="text-blue-600 font-black">"{query}"</span> nesta base de dados.
+              </p>
             </div>
           )}
         </div>

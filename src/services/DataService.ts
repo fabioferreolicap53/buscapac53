@@ -9,7 +9,7 @@ export interface PatientData {
   N_CNS_DA_PESSOA_CADASTRADA: string;
   NOME_DA_PESSOA_CADASTRADA: string;
   NOME_DA_MAE_PESSOA_CADASTRADA: string;
-  DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO: string;
+  DATA_ULTIMA_ATUALIZACAO: string;
   SITUACAO_USUARIO: string;
   SEXO: string;
   DATA_DE_NASCIMENTO: string;
