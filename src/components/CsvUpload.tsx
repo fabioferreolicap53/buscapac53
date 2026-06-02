@@ -10,6 +10,8 @@ export default function CsvUpload() {
   const [status, setStatus] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle');
   const [progressText, setProgressText] = useState('Lendo arquivo...');
   const [progressPercent, setProgressPercent] = useState(0);
+  const [totalFileSize, setTotalFileSize] = useState(0);
+  const [bytesProcessed, setBytesProcessed] = useState(0);
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -25,25 +27,31 @@ export default function CsvUpload() {
     setStatus('uploading');
     setProgressText('Iniciando processamento...');
     setProgressPercent(0);
+    setTotalFileSize(file.size);
+    setBytesProcessed(0);
 
     try {
       // 1. Auth
       setProgressText('Autenticando...');
+      setProgressPercent(10);
       await DataService.authenticate();
 
       // 2. Limpeza via DataService
       setProgressText('Limpando registros antigos...');
+      setProgressPercent(20);
       await DataService.truncateCollection();
 
       // 3. Processamento Chunked com PapaParse
       let totalProcessed = 0;
+      let chunkCount = 0;
+      const chunkSize = 1024 * 1024 * 2;
       
       Papa.parse(file, {
         header: false,
         skipEmptyLines: true,
         worker: false,
         encoding: "CP1252",
-        chunkSize: 1024 * 1024 * 2,
+        chunkSize: chunkSize,
         chunk: async (results, parser) => {
           parser.pause();
           
@@ -61,6 +69,11 @@ export default function CsvUpload() {
               const raw = (val || '').trim().replace(/^"|"$/g, '').trim();
               return normalizeString(raw);
             });
+
+            // Skip if name and CNS are empty (common in empty rows with delimiters)
+            if (!clean[3] && !clean[4]) {
+              continue;
+            }
 
             const formatDate = (dateStr: string) => {
               if (!dateStr) return '';
@@ -104,7 +117,14 @@ export default function CsvUpload() {
           
           if (batch.length > 0) {
             await Promise.all(batch);
+            setProgressText(`${totalProcessed} registros enviados...`);
           }
+          
+          chunkCount++;
+          const newBytesProcessed = Math.min(chunkCount * chunkSize, totalFileSize);
+          setBytesProcessed(newBytesProcessed);
+          const newPercent = totalFileSize > 0 ? Math.min(Math.floor((newBytesProcessed / totalFileSize) * 100), 100) : 0;
+          setProgressPercent(newPercent);
           
           parser.resume();
         },
@@ -122,6 +142,8 @@ export default function CsvUpload() {
             console.error('Erro ao salvar histórico:', hErr);
           }
 
+          setProgressPercent(100);
+          setProgressText(`Concluído! ${totalProcessed} registros processados.`);
           setStatus('success');
           setTimeout(() => window.location.reload(), 3000);
         },
