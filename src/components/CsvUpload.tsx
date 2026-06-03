@@ -105,7 +105,12 @@ export default function CsvUpload() {
               BAIRRO_DE_MORADIA: clean[13],
             };
 
-            batch.push(DataService.createPatient(recordData).catch(e => console.error('Erro na linha:', e)));
+            batch.push(DataService.createPatient(recordData).catch(e => {
+              console.error('Erro na linha:', e);
+              if (e.response?.data) {
+                console.error('Detalhes do erro:', JSON.stringify(e.response.data));
+              }
+            }));
             totalProcessed++;
 
             if (batch.length >= 25) { // Lotes menores para a VM lenta

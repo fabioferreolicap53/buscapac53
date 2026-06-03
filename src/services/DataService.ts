@@ -279,26 +279,34 @@ export const DataService = {
     try {
       const collection = await pb.collections.getOne('buscapac53_pacientes');
       
-      // Remove min/max length limits from schema fields
-      const schemaNoLimits = collection.schema.map((field: any) => {
+      // Remove min/max length limits and required constraints from schema fields
+      const schemaCleaned = collection.schema.map((field: any) => {
+        const cleaned = {
+          ...field,
+          required: false, // Ensure no field is required to avoid 400 errors on empty CSV cells
+        };
+
         if (field.type === 'text') {
-          return {
-            ...field,
-            options: {
-              ...field.options,
-              min: null,
-              max: null,
-              pattern: ''
-            }
+          cleaned.options = {
+            ...field.options,
+            min: null,
+            max: null,
+            pattern: ''
           };
         }
-        return field;
+
+        // Standardize the date field name if it's the old long version
+        if (field.name === 'DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO' || field.name === 'DATA_ULTIMA_ATUALIZACAO_DO_CADAS') {
+          cleaned.name = 'DATA_ULTIMA_ATUALIZACAO';
+        }
+
+        return cleaned;
       });
 
       const schemaClone = {
         name: collection.name,
         type: collection.type,
-        schema: schemaNoLimits,
+        schema: schemaCleaned,
         listRule: collection.listRule,
         viewRule: collection.viewRule,
         createRule: collection.createRule,
