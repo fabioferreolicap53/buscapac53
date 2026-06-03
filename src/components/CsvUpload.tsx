@@ -5,6 +5,20 @@ import { DataService, pb } from '../services/DataService';
 import Papa from 'papaparse';
 import { normalizeString } from '../utils/stringUtils';
 
+const PARSE_CHUNK_SIZE = 512 * 1024;
+const UPLOAD_BATCH_SIZE = 5;
+const MAX_FAILURES_BEFORE_ABORT = 20;
+const MAX_FILE_SIZE = 1024 * 1024 * 1024;
+const MAX_FILE_SIZE_LABEL = '1GB';
+
+const formatFileSize = (bytes: number) => {
+  if (bytes >= 1024 * 1024 * 1024) {
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+  }
+
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
+
 export default function CsvUpload() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [status, setStatus] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle');
@@ -17,10 +31,8 @@ export default function CsvUpload() {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    // File size limit: 200MB
-    const MAX_FILE_SIZE = 200 * 1024 * 1024;
     if (file.size > MAX_FILE_SIZE) {
-      alert(`O arquivo excede o limite de tamanho permitido (200MB). Tamanho do arquivo: ${(file.size / 1024 / 1024).toFixed(2)}MB`);
+      alert(`O arquivo excede o limite de tamanho permitido (${MAX_FILE_SIZE_LABEL}). Tamanho do arquivo: ${formatFileSize(file.size)}`);
       return;
     }
 
@@ -42,127 +54,165 @@ export default function CsvUpload() {
       await DataService.truncateCollection();
 
       // 3. Processamento Chunked com PapaParse
-      let totalProcessed = 0;
+      let totalRead = 0;
+      let totalSaved = 0;
+      let totalFailed = 0;
       let chunkCount = 0;
-      const chunkSize = 1024 * 1024 * 2;
-      
-      Papa.parse(file, {
-        header: false,
-        skipEmptyLines: true,
-        worker: false,
-        encoding: "CP1252",
-        chunkSize: chunkSize,
-        chunk: async (results, parser) => {
-          parser.pause();
-          
-          const rows = results.data as string[][];
-          const batch = [];
+      const flushBatch = async (batch: any[]) => {
+        if (batch.length === 0) {
+          return;
+        }
 
-          for (const row of rows) {
-            if (totalProcessed === 0 && row[0]?.toLowerCase().includes('unidade')) {
-              continue;
-            }
+        const result = await DataService.createPatientsBatch(batch);
+        totalSaved += result.successCount;
+        totalFailed += result.failureCount;
 
-            if (row.length < 14) continue;
-
-            const clean = row.map(val => {
-              const raw = (val || '').trim().replace(/^"|"$/g, '').trim();
-              return normalizeString(raw);
-            });
-
-            // Skip if name and CNS are empty (common in empty rows with delimiters)
-            if (!clean[3] && !clean[4]) {
-              continue;
-            }
-
-            const formatDate = (dateStr: string) => {
-              if (!dateStr) return '';
-              if (dateStr.match(/^\d{4}-\d{2}-\d{2}/)) {
-                 const p = dateStr.substring(0, 10).split('-');
-                 return `${p[2]}/${p[1]}/${p[0]}`;
-              }
-              const parts = dateStr.split('/');
-              if (parts.length === 3) {
-                return `${parts[0].padStart(2, '0')}/${parts[1].padStart(2, '0')}/${parts[2]}`;
-              }
-              return dateStr;
-            };
-
-            const recordData: any = {
-              NOME_UNIDADE_DE_SAUDE: clean[0],
-              NOME_EQUIPE_DE_SAUDE: clean[1],
-              CODIGO_MICROAREA: clean[2],
-              N_CNS_DA_PESSOA_CADASTRADA: clean[3],
-              NOME_DA_PESSOA_CADASTRADA: clean[4],
-              NOME_DA_MAE_PESSOA_CADASTRADA: clean[5],
-              DATA_ULTIMA_ATUALIZACAO: formatDate(clean[6]),
-              SITUACAO_USUARIO: clean[7],
-              SEXO: clean[8],
-              DATA_DE_NASCIMENTO: formatDate(clean[9]),
-              TIPO_DE_LOGRADOURO: clean[10],
-              LOGRADOURO: clean[11],
-              CEP_LOGRADOURO: clean[12],
-              BAIRRO_DE_MORADIA: clean[13],
-            };
-
-            batch.push(DataService.createPatient(recordData).catch(e => {
-              console.error('Erro na linha:', e);
-              if (e.response?.data) {
-                console.error('Detalhes do erro:', JSON.stringify(e.response.data));
-              }
-            }));
-            totalProcessed++;
-
-            if (batch.length >= 25) { // Lotes menores para a VM lenta
-              await Promise.all(batch);
-              batch.length = 0;
-              setProgressText(`${totalProcessed} registros enviados...`);
-            }
+        if (result.firstError) {
+          console.error('Erro no lote:', result.firstError);
+          const responseData = (result.firstError as any)?.response?.data;
+          if (responseData) {
+            console.error('Detalhes do erro:', JSON.stringify(responseData));
           }
-          
-          if (batch.length > 0) {
-            await Promise.all(batch);
-            setProgressText(`${totalProcessed} registros enviados...`);
+        }
+
+        setProgressText(`${totalSaved} salvos • ${totalFailed} falhas`);
+
+        if (totalSaved === 0 && totalFailed >= MAX_FAILURES_BEFORE_ABORT) {
+          throw new Error('Muitas falhas consecutivas no início do upload. Processo abortado para proteger PocketBase.');
+        }
+      };
+
+      const formatDate = (dateStr: string) => {
+        if (!dateStr) return '';
+        if (dateStr.match(/^\d{4}-\d{2}-\d{2}/)) {
+          const p = dateStr.substring(0, 10).split('-');
+          return `${p[2]}/${p[1]}/${p[0]}`;
+        }
+        const parts = dateStr.split('/');
+        if (parts.length === 3) {
+          return `${parts[0].padStart(2, '0')}/${parts[1].padStart(2, '0')}/${parts[2]}`;
+        }
+        return dateStr;
+      };
+
+      await new Promise<void>((resolve, reject) => {
+        let settled = false;
+
+        const finishWithError = (error: unknown) => {
+          if (settled) return;
+          settled = true;
+          reject(error);
+        };
+
+        const finishWithSuccess = async () => {
+          if (settled) return;
+          settled = true;
+
+          if (totalSaved === 0) {
+            reject(new Error('Nenhum registro foi salvo no PocketBase.'));
+            return;
           }
-          
-          chunkCount++;
-          const newBytesProcessed = Math.min(chunkCount * chunkSize, totalFileSize);
-          setBytesProcessed(newBytesProcessed);
-          const newPercent = totalFileSize > 0 ? Math.min(Math.floor((newBytesProcessed / totalFileSize) * 100), 100) : 0;
-          setProgressPercent(newPercent);
-          
-          parser.resume();
-        },
-        complete: async () => {
-          console.log(`Upload finalizado. Total: ${totalProcessed} registros.`);
-          
-          // 4. Registrar histórico
+
           try {
             await pb.collection('buscapac53_historico').create({
               date: new Date().toLocaleString(),
-              count: totalProcessed,
+              count: totalSaved,
               fileName: file.name
             });
           } catch (hErr) {
             console.error('Erro ao salvar histórico:', hErr);
           }
 
-          setProgressPercent(100);
-          setProgressText(`Concluído! ${totalProcessed} registros processados.`);
-          setStatus('success');
-          setTimeout(() => window.location.reload(), 3000);
-        },
-        error: (error) => {
-          console.error('Erro PapaParse:', error);
-          setStatus('error');
-          setProgressText('Erro no processamento do arquivo.');
-        }
+          resolve();
+        };
+
+        Papa.parse(file, {
+          header: false,
+          skipEmptyLines: 'greedy',
+          worker: false,
+          encoding: 'CP1252',
+          chunkSize: PARSE_CHUNK_SIZE,
+          chunk: async (results, parser) => {
+            parser.pause();
+
+            try {
+              const rows = results.data as string[][];
+              const batch: any[] = [];
+
+              for (const row of rows) {
+                if (totalRead === 0 && row[0]?.toLowerCase().includes('unidade')) {
+                  totalRead++;
+                  continue;
+                }
+
+                totalRead++;
+
+                if (row.length < 14) continue;
+
+                const clean = row.map((val) => {
+                  const raw = (val || '').trim().replace(/^"|"$/g, '').trim();
+                  return normalizeString(raw);
+                });
+
+                if (!clean[3] && !clean[4]) {
+                  continue;
+                }
+
+                batch.push({
+                  NOME_UNIDADE_DE_SAUDE: clean[0],
+                  NOME_EQUIPE_DE_SAUDE: clean[1],
+                  CODIGO_MICROAREA: clean[2],
+                  N_CNS_DA_PESSOA_CADASTRADA: clean[3],
+                  NOME_DA_PESSOA_CADASTRADA: clean[4],
+                  NOME_DA_MAE_PESSOA_CADASTRADA: clean[5],
+                  DATA_ULTIMA_ATUALIZACAO: formatDate(clean[6]),
+                  SITUACAO_USUARIO: clean[7],
+                  SEXO: clean[8],
+                  DATA_DE_NASCIMENTO: formatDate(clean[9]),
+                  TIPO_DE_LOGRADOURO: clean[10],
+                  LOGRADOURO: clean[11],
+                  CEP_LOGRADOURO: clean[12],
+                  BAIRRO_DE_MORADIA: clean[13],
+                });
+
+                if (batch.length >= UPLOAD_BATCH_SIZE) {
+                  await flushBatch(batch.splice(0, batch.length));
+                }
+              }
+
+              await flushBatch(batch);
+
+              chunkCount++;
+              const newBytesProcessed = Math.min(chunkCount * PARSE_CHUNK_SIZE, totalFileSize);
+              setBytesProcessed(newBytesProcessed);
+              const parsePercent = totalFileSize > 0 ? newBytesProcessed / totalFileSize : 0;
+              const newPercent = Math.min(20 + Math.floor(parsePercent * 75), 99);
+              setProgressPercent(newPercent);
+
+              parser.resume();
+            } catch (error) {
+              parser.abort();
+              finishWithError(error);
+            }
+          },
+          complete: async () => {
+            await finishWithSuccess();
+          },
+          error: (error) => {
+            finishWithError(error);
+          }
+        });
       });
+
+      setProgressPercent(100);
+      setProgressText(`Concluído! ${totalSaved} salvos • ${totalFailed} falhas`);
+      setStatus('success');
+      setTimeout(() => window.location.reload(), 3000);
 
     } catch (error) {
       console.error('Erro geral:', error);
       setStatus('error');
-      setProgressText('Falha na conexão ou autenticação.');
+      setProgressText(error instanceof Error ? error.message : 'Falha no upload para PocketBase.');
     }
   };
 
@@ -186,7 +236,7 @@ export default function CsvUpload() {
           </div>
           <div className="text-center">
             <p className="text-sm font-black text-slate-700 tracking-widest uppercase">Selecionar Arquivo</p>
-            <p className="text-xs text-slate-400 mt-2 font-medium">CSV até 200MB</p>
+            <p className="text-xs text-slate-400 mt-2 font-medium">CSV até {MAX_FILE_SIZE_LABEL}</p>
           </div>
         </button>
       )}
@@ -208,7 +258,10 @@ export default function CsvUpload() {
                 <div className="absolute top-0 left-0 w-full h-full bg-white/20 animate-[shimmer_2s_infinite]" />
               </div>
             </div>
-            <p className="text-xs font-bold text-slate-500 text-right">{progressPercent}%</p>
+            <div className="flex items-center justify-between gap-3 text-xs font-bold text-slate-500">
+              <span>{formatFileSize(bytesProcessed)} / {formatFileSize(totalFileSize || 0)}</span>
+              <span>{progressPercent}%</span>
+            </div>
           </div>
         </div>
       )}

@@ -29,10 +29,17 @@ export const pb = new PocketBase(import.meta.env.VITE_DB_ADDRESS || 'https://cen
 const REMOTE_TIMEOUT_MS = 15000; // Aumentado para 15s devido à VM lenta com 1GB RAM
 const REMOTE_NAME_PAGE_SIZE = 200;
 const REMOTE_NAME_STOP_WORDS = new Set(['da', 'de', 'do', 'das', 'dos', 'e']);
+const UPLOAD_REQUEST_TIMEOUT_MS = 60000;
+const UPLOAD_PARALLEL_REQUESTS = 2;
+const UPLOAD_COOLDOWN_MS = 75;
+const LOCAL_CACHE_MAX_ROWS = 5000;
+const DELETE_PARALLEL_REQUESTS = 2;
 
 const STORAGE_KEY = 'buscapac_db';
 const UPDATE_KEY = 'buscapac_last_update';
 const HISTORY_KEY = 'buscapac_upload_history';
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number, errorMessage: string): Promise<T> => {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
@@ -121,9 +128,14 @@ export const DataService = {
     if (onProgress) onProgress('Salvando no cache local...', 5);
 
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      if (data.length <= LOCAL_CACHE_MAX_ROWS) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      } else {
+        localStorage.removeItem(STORAGE_KEY);
+      }
+
       localStorage.setItem(UPDATE_KEY, now);
-      
+
       const history = DataService.getHistory();
       const updatedHistory = [newEntry, ...history].slice(0, 3);
       localStorage.setItem(HISTORY_KEY, JSON.stringify(updatedHistory));
@@ -147,20 +159,17 @@ export const DataService = {
 
       if (onProgress) onProgress(`Enviando ${data.length} novos registros...`, 30);
       
-      const batchSize = 50; 
+      const batchSize = 5;
       for (let i = 0; i < data.length; i += batchSize) {
         const batch = data.slice(i, i + batchSize);
-        await Promise.all(batch.map(async (patient) => {
-          try {
-            return await DataService.createPatient(patient);
-          } catch (err: any) {
-            console.error('Erro no registro:', err.response?.data || err);
-          }
-        }));
+        const result = await DataService.createPatientsBatch(batch);
+        if (result.failureCount > 0 && result.successCount === 0 && result.firstError) {
+          throw result.firstError;
+        }
         
         if (onProgress) {
           const percent = 30 + Math.floor((i / data.length) * 70);
-          onProgress(`Enviando para o servidor... (${i} de ${data.length})`, percent);
+          onProgress(`Enviando para o servidor... (${Math.min(i + batch.length, data.length)} de ${data.length})`, percent);
         }
       }
 
@@ -186,7 +195,7 @@ export const DataService = {
         const records = await withTimeout(
           pb.collection('buscapac53_pacientes').getList(1, REMOTE_NAME_PAGE_SIZE, {
             filter: buildRemoteNameFilter(query),
-            sort: 'NOME_DA_MAE_PESSOA_CADASTRADA,-DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO',
+            sort: 'NOME_DA_MAE_PESSOA_CADASTRADA,-DATA_ULTIMA_ATUALIZACAO',
             $autoCancel: false
           }),
           REMOTE_TIMEOUT_MS,
@@ -208,7 +217,7 @@ export const DataService = {
       const records = await withTimeout(
         pb.collection('buscapac53_pacientes').getList(1, 50, {
           filter: `N_CNS_DA_PESSOA_CADASTRADA = "${query}"`,
-          sort: 'NOME_DA_MAE_PESSOA_CADASTRADA,-DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO',
+          sort: 'NOME_DA_MAE_PESSOA_CADASTRADA,-DATA_ULTIMA_ATUALIZACAO',
           $autoCancel: false
         }),
         REMOTE_TIMEOUT_MS,
@@ -320,14 +329,23 @@ export const DataService = {
       await pb.collections.delete(collection.id);
       await new Promise(resolve => setTimeout(resolve, 2000));
       await pb.collections.create(schemaClone);
+      await sleep(1000);
       return true;
     } catch (err) {
       console.error('Erro ao truncar via recriação, tentando deleção manual...', err);
       let hasMore = true;
       while (hasMore) {
-        const result = await pb.collection('buscapac53_pacientes').getList(1, 200, { fields: 'id' });
+        const result = await pb.collection('buscapac53_pacientes').getList(1, 200, { fields: 'id', $autoCancel: false });
         if (result.items.length === 0) break;
-        await Promise.all(result.items.map(item => pb.collection('buscapac53_pacientes').delete(item.id)));
+
+        for (let i = 0; i < result.items.length; i += DELETE_PARALLEL_REQUESTS) {
+          const slice = result.items.slice(i, i + DELETE_PARALLEL_REQUESTS);
+          await Promise.all(
+            slice.map((item) => pb.collection('buscapac53_pacientes').delete(item.id, { $autoCancel: false, requestKey: null }))
+          );
+          await sleep(UPLOAD_COOLDOWN_MS);
+        }
+
         if (result.items.length < 200) hasMore = false;
       }
       return true;
@@ -342,7 +360,41 @@ export const DataService = {
         pbRecord[key] = val;
       }
     }
-    return await pb.collection('buscapac53_pacientes').create(pbRecord, { $autoCancel: false });
+    return await withTimeout(
+      pb.collection('buscapac53_pacientes').create(pbRecord, { $autoCancel: false, requestKey: null }),
+      UPLOAD_REQUEST_TIMEOUT_MS,
+      'Timeout ao criar registro no PocketBase.'
+    );
+  },
+
+  createPatientsBatch: async (patients: Partial<PatientData>[]) => {
+    let successCount = 0;
+    let failureCount = 0;
+    let firstError: unknown = null;
+
+    for (let i = 0; i < patients.length; i += UPLOAD_PARALLEL_REQUESTS) {
+      const slice = patients.slice(i, i + UPLOAD_PARALLEL_REQUESTS);
+      const results = await Promise.allSettled(slice.map((patient) => DataService.createPatient(patient)));
+
+      for (const result of results) {
+        if (result.status === 'fulfilled') {
+          successCount++;
+        } else {
+          failureCount++;
+          if (!firstError) {
+            firstError = result.reason;
+          }
+        }
+      }
+
+      await sleep(UPLOAD_COOLDOWN_MS);
+    }
+
+    return {
+      successCount,
+      failureCount,
+      firstError
+    };
   },
 
   parseCSV: (csvText: string): PatientData[] => {
@@ -370,7 +422,7 @@ export const DataService = {
           N_CNS_DA_PESSOA_CADASTRADA: cols[3],
           NOME_DA_PESSOA_CADASTRADA: cols[4],
           NOME_DA_MAE_PESSOA_CADASTRADA: cols[5],
-          DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO: cols[6],
+          DATA_ULTIMA_ATUALIZACAO: cols[6],
           SITUACAO_USUARIO: cols[7],
           SEXO: cols[8],
           DATA_DE_NASCIMENTO: cols[9],
