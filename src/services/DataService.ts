@@ -197,19 +197,31 @@ const countPatientsRecords = async () => {
 
 const buildRemoteNameFilter = (query: string): string => {
   const normalizedQuery = normalizeString(query);
-  const tokens = normalizedQuery
-    .split(' ')
-    .filter((token) => token.length >= 3 && !REMOTE_NAME_STOP_WORDS.has(token.toLowerCase()))
-    .sort((a, b) => b.length - a.length)
-    .slice(0, 3); // Aumentado para 3 tokens para maior precisão
+  const words = normalizedQuery.split(' ').filter(t => t.length > 0);
 
-  if (tokens.length === 0) {
-    // Busca exata curta se não houver tokens longos
-    return `NOME_DA_PESSOA_CADASTRADA ~ "${escapeFilterValue(normalizedQuery)}"`;
+  if (words.length === 0) {
+    return '';
   }
 
-  // Gera um filtro que exige que todos os tokens estejam presentes no nome (AND)
-  return tokens.map(token => `(NOME_DA_PESSOA_CADASTRADA ~ "${escapeFilterValue(token)}")`).join(' && ');
+  // O SQLite no PocketBase sofre com timeout (erro 400) se usarmos apenas LIKE (~) em 300k+ registros.
+  // Para forçar o uso do índice `idx_nome`, usamos busca por prefixo na primeira palavra.
+  const firstWord = words[0];
+  const nextChar = String.fromCharCode(firstWord.charCodeAt(firstWord.length - 1) + 1);
+  const endFirstWord = firstWord.slice(0, -1) + nextChar;
+
+  let filterStr = `(NOME_DA_PESSOA_CADASTRADA >= "${escapeFilterValue(firstWord)}" && NOME_DA_PESSOA_CADASTRADA < "${escapeFilterValue(endFirstWord)}")`;
+
+  // As próximas palavras usamos LIKE (~), pois o dataset já estará bem pequeno
+  let tokenCount = 1;
+  for (let i = 1; i < words.length && tokenCount < 3; i++) {
+    const token = words[i];
+    if (token.length >= 2 && !REMOTE_NAME_STOP_WORDS.has(token.toLowerCase())) {
+      filterStr += ` && (NOME_DA_PESSOA_CADASTRADA ~ "${escapeFilterValue(token)}")`;
+      tokenCount++;
+    }
+  }
+
+  return filterStr;
 };
 
 export const DataService = {
@@ -266,7 +278,8 @@ export const DataService = {
           pb.collection(PATIENTS_COLLECTION).getList(1, REMOTE_NAME_PAGE_SIZE, {
             filter: buildRemoteNameFilter(query),
             sort: 'NOME_DA_MAE_PESSOA_CADASTRADA,-DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO',
-            $autoCancel: false
+            $autoCancel: false,
+            requestKey: null
           }),
           REMOTE_TIMEOUT_MS,
           'Timeout na busca remota por nome.'
@@ -288,7 +301,8 @@ export const DataService = {
         pb.collection(PATIENTS_COLLECTION).getList(1, 50, {
           filter: `N_CNS_DA_PESSOA_CADASTRADA = "${query}"`,
           sort: 'NOME_DA_MAE_PESSOA_CADASTRADA,-DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO',
-          $autoCancel: false
+          $autoCancel: false,
+          requestKey: null
         }),
         REMOTE_TIMEOUT_MS,
         'Timeout na busca remota por CNS.'
