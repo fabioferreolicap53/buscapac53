@@ -52,7 +52,13 @@ export default function CsvUpload() {
       // 2. Limpeza via DataService
       setProgressText('Limpando registros antigos...');
       setProgressPercent(20);
-      await DataService.truncateCollection();
+      const truncateResult = await DataService.truncateCollection();
+      setProgressText(
+        truncateResult.removedCount === 0
+          ? 'Base antiga já estava vazia.'
+          : `${truncateResult.removedCount.toLocaleString()} registros antigos removidos.`
+      );
+      setProgressPercent(22);
 
       // 3. Processamento Chunked com PapaParse
       let totalRead = 0;

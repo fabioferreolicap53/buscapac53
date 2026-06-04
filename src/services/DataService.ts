@@ -25,6 +25,10 @@ export interface UploadHistory {
   fileName: string;
 }
 
+export interface TruncateResult {
+  removedCount: number;
+}
+
 export const pb = new PocketBase(import.meta.env.VITE_DB_ADDRESS || 'https://centraldedados.dev.br');
 const REMOTE_TIMEOUT_MS = 15000; // Aumentado para 15s devido à VM lenta com 1GB RAM
 const REMOTE_NAME_PAGE_SIZE = 200;
@@ -84,9 +88,33 @@ const getErrorStatus = (error: unknown): number | null => {
   return typeof responseStatus === 'number' ? responseStatus : null;
 };
 
+const getErrorMessage = (error: unknown): string => {
+  if (error instanceof Error) {
+    return error.message.toLowerCase();
+  }
+
+  if (!error || typeof error !== 'object') {
+    return '';
+  }
+
+  const responseMessage = (error as any).response?.message;
+  if (typeof responseMessage === 'string') {
+    return responseMessage.toLowerCase();
+  }
+
+  const rawMessage = (error as any).message;
+  return typeof rawMessage === 'string' ? rawMessage.toLowerCase() : '';
+};
+
 const isUnsupportedEndpointError = (error: unknown): boolean => {
   const status = getErrorStatus(error);
-  return status === 400 || status === 404 || status === 405 || status === 501;
+  const message = getErrorMessage(error);
+
+  return status === 400 || status === 404 || status === 405 || status === 501 ||
+    message.includes('not found') ||
+    message.includes('not implemented') ||
+    message.includes('missing or invalid api route') ||
+    message.includes('unsupported');
 };
 
 const isRetryableUploadError = (error: unknown): boolean => {
@@ -139,6 +167,45 @@ const buildUploadFriendlySchema = (schema: any[]) => {
 
     return cleaned;
   });
+};
+
+const countPatientsRecords = async () => {
+  const result = await pb.collection(PATIENTS_COLLECTION).getList(1, 1, {
+    fields: 'id',
+    $autoCancel: false,
+    requestKey: null
+  });
+
+  return result.totalItems;
+};
+
+const purgePatientsRecordsManually = async () => {
+  let totalDeleted = 0;
+
+  while (true) {
+    const result = await pb.collection(PATIENTS_COLLECTION).getList(1, DELETE_PAGE_SIZE, {
+      fields: 'id',
+      sort: 'id',
+      $autoCancel: false,
+      requestKey: null
+    });
+
+    if (result.items.length === 0) {
+      return totalDeleted;
+    }
+
+    for (let i = 0; i < result.items.length; i += DELETE_PARALLEL_REQUESTS) {
+      const slice = result.items.slice(i, i + DELETE_PARALLEL_REQUESTS);
+      await Promise.all(
+        slice.map((item) => pb.collection(PATIENTS_COLLECTION).delete(item.id, {
+          $autoCancel: false,
+          requestKey: null
+        }))
+      );
+      totalDeleted += slice.length;
+      await sleep(BATCH_UPLOAD_COOLDOWN_MS);
+    }
+  }
 };
 
 const buildRemoteNameFilter = (query: string): string => {
@@ -234,7 +301,14 @@ export const DataService = {
       }
 
       if (onProgress) onProgress('Limpando registros antigos...', 15);
-      await DataService.truncateCollection();
+      const truncateResult = await DataService.truncateCollection();
+
+      if (onProgress) {
+        const removedLabel = truncateResult.removedCount === 0
+          ? 'Base antiga já estava vazia.'
+          : `${truncateResult.removedCount.toLocaleString()} registros antigos removidos.`;
+        onProgress(removedLabel, 22);
+      }
 
       if (onProgress) onProgress(`Enviando ${data.length} novos registros...`, 30);
       
@@ -362,8 +436,14 @@ export const DataService = {
     return count ? parseInt(count) : 0;
   },
 
-  truncateCollection: async () => {
+  truncateCollection: async (): Promise<TruncateResult> => {
     await DataService.authenticate();
+
+    const initialCount = await countPatientsRecords();
+    if (initialCount === 0) {
+      return { removedCount: 0 };
+    }
+
     try {
       const collection = await pb.collections.getOne(PATIENTS_COLLECTION);
       const cleanedSchema = buildUploadFriendlySchema(collection.schema);
@@ -396,7 +476,6 @@ export const DataService = {
           'Timeout ao truncar coleção no PocketBase.'
         );
         truncateApiAvailable = true;
-        return true;
       }
     } catch (err) {
       if (isUnsupportedEndpointError(err)) {
@@ -406,33 +485,18 @@ export const DataService = {
       }
     }
 
-    let hasMore = true;
-    while (hasMore) {
-      const result = await pb.collection(PATIENTS_COLLECTION).getList(1, DELETE_PAGE_SIZE, {
-        fields: 'id',
-        $autoCancel: false,
-        requestKey: null
-      });
+    let remainingCount = await countPatientsRecords();
 
-      if (result.items.length === 0) {
-        break;
-      }
-
-      for (let i = 0; i < result.items.length; i += DELETE_PARALLEL_REQUESTS) {
-        const slice = result.items.slice(i, i + DELETE_PARALLEL_REQUESTS);
-        await Promise.all(
-          slice.map((item) => pb.collection(PATIENTS_COLLECTION).delete(item.id, {
-            $autoCancel: false,
-            requestKey: null
-          }))
-        );
-        await sleep(BATCH_UPLOAD_COOLDOWN_MS);
-      }
-
-      hasMore = result.items.length === DELETE_PAGE_SIZE;
+    if (remainingCount > 0) {
+      await purgePatientsRecordsManually();
+      remainingCount = await countPatientsRecords();
     }
 
-    return true;
+    if (remainingCount > 0) {
+      throw new Error(`Falha ao limpar registros antigos no PocketBase. Restantes: ${remainingCount}.`);
+    }
+
+    return { removedCount: initialCount };
   },
 
   createPatient: async (patient: Partial<PatientData>) => {
