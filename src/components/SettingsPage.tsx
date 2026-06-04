@@ -136,30 +136,6 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
               </div>
             </div>
           </div>
-
-          {/* Danger Zone */}
-          <div className="bg-red-50 p-8 rounded-[2.5rem] border border-red-100 shadow-sm">
-            <h3 className="text-xl font-bold text-red-900 mb-4 flex items-center gap-3">
-              <AlertCircle className="text-red-600" size={22} />
-              Zona de Perigo
-            </h3>
-            <p className="text-sm text-red-700/70 mb-6 font-medium">
-              As ações abaixo são permanentes e não podem ser desfeitas. Tenha cuidado ao prosseguir.
-            </p>
-            
-            <button
-              onClick={handleClearDatabase}
-              disabled={isClearing}
-              className="flex items-center gap-3 px-6 py-3 bg-white hover:bg-red-600 text-red-600 hover:text-white border border-red-200 rounded-2xl font-black text-xs tracking-widest transition-all duration-300 shadow-sm disabled:opacity-50 group"
-            >
-              {isClearing ? (
-                <div className="w-4 h-4 border-2 border-red-200 border-t-red-600 rounded-full animate-spin" />
-              ) : (
-                <Trash2 size={18} className="group-hover:scale-110 transition-transform" />
-              )}
-              LIMPAR TODA A BASE DE DADOS
-            </button>
-          </div>
         </div>
 
         {/* Right Column: Upload and History */}

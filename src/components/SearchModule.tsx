@@ -155,7 +155,7 @@ export default function SearchModule() {
               onChange={(e) => setQuery(e.target.value.toUpperCase())}
               onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
               placeholder={activeTab === 'name' ? "DIGITE O NOME DO PACIENTE..." : "DIGITE O NÚMERO DO CNS..."}
-              className="w-full bg-transparent border-none focus:ring-0 text-slate-800 placeholder:text-slate-300 font-black text-sm sm:text-base tracking-tight uppercase"
+              className="w-full bg-transparent border-none focus:ring-0 focus:outline-none outline-none text-slate-800 placeholder:text-slate-300 font-black text-sm sm:text-base tracking-tight uppercase"
             />
             {query && (
               <button 
