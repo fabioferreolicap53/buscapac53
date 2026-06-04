@@ -204,120 +204,119 @@ export default function SearchModule() {
               {results.map((patient, idx) => (
                 <div 
                   key={getPatientKey(patient)} 
-                  className="bg-white rounded-[2rem] border border-slate-200 shadow-sm hover:shadow-xl hover:border-blue-200 transition-all duration-500 overflow-hidden group/card"
+                  className="bg-white rounded-[2rem] border border-slate-200 shadow-sm hover:shadow-xl hover:border-blue-200 transition-all duration-500 overflow-hidden group/card flex flex-col"
                   style={{ animationDelay: `${idx * 50}ms` }}
                 >
-                  {/* Top Bar Status */}
-                  <div className="bg-slate-50 px-6 sm:px-8 py-3 border-b border-slate-100 flex items-center justify-between">
+                  {/* Top Bar Status & Location */}
+                  <div className="bg-gradient-to-r from-slate-50 to-white px-6 sm:px-8 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
-                      <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-                      <span className="text-[10px] font-black text-slate-400 tracking-widest uppercase">{patient.SITUACAO_USUARIO || 'Ativo'}</span>
+                      <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+                      <span className="text-[11px] font-black text-slate-500 tracking-widest uppercase">{patient.SITUACAO_USUARIO || 'Ativo'}</span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">{patient.NOME_UNIDADE_DE_SAUDE}</span>
+                    <div className="flex items-center gap-2 sm:gap-4 flex-wrap justify-end">
+                      <div className="flex items-center gap-1.5 bg-blue-50/50 px-3 py-1.5 rounded-lg border border-blue-100/50">
+                        <MapPin size={12} className="text-blue-500" />
+                        <span className="text-[10px] font-black text-blue-900 uppercase tracking-widest">{patient.NOME_UNIDADE_DE_SAUDE}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 bg-emerald-50/50 px-3 py-1.5 rounded-lg border border-emerald-100/50">
+                        <Activity size={12} className="text-emerald-500" />
+                        <span className="text-[10px] font-black text-emerald-900 uppercase tracking-widest">
+                          EQ {patient.NOME_EQUIPE_DE_SAUDE} <span className="text-emerald-300 mx-0.5">•</span> MA {patient.CODIGO_MICROAREA}
+                        </span>
+                      </div>
                     </div>
                   </div>
 
-                  <div className="p-6 sm:p-8">
+                  <div className="p-6 sm:p-8 flex-1">
                     <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-6 mb-8">
                       <div className="flex items-start gap-5">
-                        <div className="w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-blue-200 group-hover/card:scale-110 transition-transform duration-500 shrink-0">
-                          <User size={24} sm:size={28} strokeWidth={2.5} />
+                        <div className="w-14 h-14 sm:w-16 sm:h-16 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-[1.2rem] flex items-center justify-center text-white shadow-lg shadow-blue-200 group-hover/card:scale-105 transition-transform duration-500 shrink-0">
+                          <User size={28} sm:size={32} strokeWidth={2} />
                         </div>
-                        <div className="min-w-0">
-                          <span className="text-[8px] sm:text-[10px] font-black text-blue-600 uppercase tracking-[0.2em] leading-none mb-2 block">Paciente</span>
-                          <h3 className="text-lg sm:text-2xl font-black text-slate-900 tracking-tight leading-tight uppercase truncate">
+                        <div className="min-w-0 pt-1">
+                          <span className="text-[10px] font-black text-blue-600 uppercase tracking-[0.2em] mb-1.5 block">Paciente</span>
+                          <h3 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight leading-none uppercase truncate">
                             {patient.NOME_DA_PESSOA_CADASTRADA}
                           </h3>
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-3 sm:pl-4 sm:border-l border-slate-200">
+                      <div className="flex items-center sm:pl-6 sm:border-l border-slate-100">
                         <div className="flex flex-col items-start sm:items-end w-full sm:w-auto">
-                          <span className="text-[6px] sm:text-[7px] font-black text-slate-400 uppercase tracking-[0.2em] leading-none mb-1">CARTÃO NACIONAL</span>
-                          <div className="flex items-center gap-2">
-                            <div className="w-5 h-5 rounded bg-blue-50 flex items-center justify-center border border-blue-100">
-                              <IdCard size={12} className="text-blue-600" />
-                            </div>
-                            <span className="text-[10px] sm:text-[11px] font-black text-slate-700 tracking-widest tabular-nums leading-none">{patient.N_CNS_DA_PESSOA_CADASTRADA}</span>
+                          <span className="text-[8px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">CARTÃO NACIONAL</span>
+                          <div className="flex items-center gap-2.5 bg-slate-50 px-3 py-2 rounded-xl border border-slate-200">
+                            <IdCard size={14} className="text-blue-500" />
+                            <span className="text-xs sm:text-sm font-black text-slate-700 tracking-widest tabular-nums">{patient.N_CNS_DA_PESSOA_CADASTRADA}</span>
                           </div>
                         </div>
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8 items-start">
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8 items-stretch">
                       {/* Details Column (7/12) */}
-                      <div className="lg:col-span-7 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 sm:gap-y-4">
-                        <div className="flex items-center gap-3 p-1.5 sm:p-2 rounded-xl border border-transparent hover:border-slate-100 hover:bg-slate-50/50 transition-all group/item">
-                          <div className="w-7 h-7 sm:w-8 sm:h-8 shrink-0 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600 border border-blue-100">
-                            <Heart size={14} className="sm:size-4" />
+                      <div className="lg:col-span-7 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
+                        <div className="flex items-center gap-4 p-3 rounded-2xl bg-white border border-slate-100 shadow-sm hover:shadow-md hover:border-blue-100 transition-all group/item">
+                          <div className="w-10 h-10 shrink-0 rounded-xl bg-blue-50 flex items-center justify-center text-blue-500 border border-blue-100/50">
+                            <Heart size={18} strokeWidth={2.5} />
                           </div>
                           <div className="min-w-0 flex-1">
-                            <p className="text-[7px] sm:text-[8px] font-black uppercase tracking-widest text-slate-500">Mãe</p>
-                            <p className={`text-[11px] sm:text-xs font-black uppercase break-words leading-tight ${patient.NOME_DA_MAE_PESSOA_CADASTRADA ? 'text-slate-800' : 'text-slate-300'}`}>
+                            <p className="text-[9px] font-black uppercase tracking-[0.15em] text-slate-400 mb-0.5">Mãe</p>
+                            <p className={`text-xs font-black uppercase truncate ${patient.NOME_DA_MAE_PESSOA_CADASTRADA ? 'text-slate-800' : 'text-slate-300'}`}>
                               {patient.NOME_DA_MAE_PESSOA_CADASTRADA || '—'}
                             </p>
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-3 p-1.5 sm:p-2 rounded-xl border border-transparent hover:border-slate-100 hover:bg-slate-50/50 transition-all group/item">
-                          <div className="w-7 h-7 sm:w-8 sm:h-8 shrink-0 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600 border border-indigo-100">
-                            <Calendar size={14} className="sm:size-4" />
+                        <div className="flex items-center gap-4 p-3 rounded-2xl bg-white border border-slate-100 shadow-sm hover:shadow-md hover:border-indigo-100 transition-all group/item">
+                          <div className="w-10 h-10 shrink-0 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-500 border border-indigo-100/50">
+                            <Calendar size={18} strokeWidth={2.5} />
                           </div>
                           <div className="min-w-0 flex-1">
-                            <p className="text-[7px] sm:text-[8px] font-black uppercase tracking-widest text-slate-500">Nascimento</p>
-                            <p className={`text-[11px] sm:text-xs font-black leading-tight ${patient.DATA_DE_NASCIMENTO ? 'text-slate-800' : 'text-slate-300'}`}>
+                            <p className="text-[9px] font-black uppercase tracking-[0.15em] text-slate-400 mb-0.5">Nascimento</p>
+                            <p className={`text-xs font-black ${patient.DATA_DE_NASCIMENTO ? 'text-slate-800' : 'text-slate-300'}`}>
                               {patient.DATA_DE_NASCIMENTO ? `${patient.DATA_DE_NASCIMENTO} (${patient.SEXO || '?'})` : '—'}
                             </p>
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-3 p-1.5 sm:p-2 rounded-xl border border-transparent hover:border-slate-100 hover:bg-slate-50/50 transition-all group/item">
-                          <div className="w-7 h-7 sm:w-8 sm:h-8 shrink-0 rounded-lg bg-amber-50 flex items-center justify-center text-amber-600 border border-amber-100">
-                            <Clock size={14} className="sm:size-4" />
+                        <div className="flex items-center gap-4 p-3 rounded-2xl bg-white border border-slate-100 shadow-sm hover:shadow-md hover:border-amber-100 transition-all group/item">
+                          <div className="w-10 h-10 shrink-0 rounded-xl bg-amber-50 flex items-center justify-center text-amber-500 border border-amber-100/50">
+                            <Clock size={18} strokeWidth={2.5} />
                           </div>
                           <div className="min-w-0 flex-1">
-                            <p className="text-[7px] sm:text-[8px] font-black uppercase tracking-widest text-slate-500">ÚLTIMA ATUALIZAÇÃO</p>
-                            <p className={`text-[11px] sm:text-xs font-black leading-tight ${patient.DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO ? 'text-slate-800' : 'text-slate-300'}`}>
+                            <p className="text-[9px] font-black uppercase tracking-[0.15em] text-slate-400 mb-0.5">Última Atualização</p>
+                            <p className={`text-xs font-black ${patient.DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO ? 'text-slate-800' : 'text-slate-300'}`}>
                               {patient.DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO || '—'}
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-3 p-1.5 sm:p-2 rounded-xl border border-transparent hover:border-slate-100 hover:bg-slate-50/50 transition-all group/item">
-                          <div className="w-7 h-7 sm:w-8 sm:h-8 shrink-0 rounded-lg bg-emerald-50 flex items-center justify-center text-emerald-600 border border-emerald-100">
-                            <Activity size={14} className="sm:size-4" />
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="text-[7px] sm:text-[8px] font-black uppercase tracking-widest text-slate-500">Equipe / Micro</p>
-                            <p className="text-[11px] sm:text-xs font-black text-slate-800 leading-tight">
-                              {patient.NOME_EQUIPE_DE_SAUDE} <span className="text-slate-300 font-bold ml-1">/</span> <span className="text-blue-600 ml-1">{patient.CODIGO_MICROAREA}</span>
                             </p>
                           </div>
                         </div>
                       </div>
 
                       {/* Address Column (5/12) */}
-                      <div className="lg:col-span-5 bg-slate-50/80 rounded-2xl p-4 sm:p-5 border border-slate-100 group-hover/card:bg-white group-hover/card:border-blue-100 transition-all duration-500">
-                        <div className="flex items-center gap-3 mb-4">
-                          <div className="w-8 h-8 rounded-xl bg-white flex items-center justify-center text-blue-600 shadow-sm border border-slate-100 group-hover/card:scale-110 transition-transform">
-                            <MapPin size="16" strokeWidth={2.5} />
-                          </div>
-                          <span className="text-[8px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest">Endereço Completo</span>
-                        </div>
-                        
-                        <div className="space-y-3">
-                          <p className="text-xs sm:text-sm font-black text-slate-800 leading-snug uppercase">
-                            {patient.TIPO_DE_LOGRADOURO} {patient.LOGRADOURO}
-                          </p>
-                          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                            <div className="flex flex-col">
-                              <span className="text-[6px] sm:text-[7px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Bairro</span>
-                              <span className="text-[10px] sm:text-xs font-bold text-slate-600 uppercase">{patient.BAIRRO_DE_MORADIA}</span>
+                      <div className="lg:col-span-5 h-full">
+                        <div className="h-full bg-slate-50/80 rounded-[1.5rem] p-5 border border-slate-100 group-hover/card:bg-white group-hover/card:shadow-lg group-hover/card:border-blue-100 transition-all duration-500 flex flex-col justify-center relative overflow-hidden">
+                          <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 rounded-full blur-2xl -mr-10 -mt-10 pointer-events-none" />
+                          
+                          <div className="flex items-center gap-3 mb-4 relative z-10">
+                            <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-blue-500 shadow-sm border border-slate-200">
+                              <MapPin size={14} strokeWidth={2.5} />
                             </div>
-                            <div className="flex flex-col">
-                              <span className="text-[6px] sm:text-[7px] font-black text-slate-400 uppercase tracking-widest mb-0.5">CEP</span>
-                              <span className="text-[10px] sm:text-xs font-bold text-slate-600 tabular-nums">{patient.CEP_LOGRADOURO}</span>
+                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Endereço Completo</span>
+                          </div>
+                          
+                          <div className="space-y-4 relative z-10">
+                            <p className="text-sm font-black text-slate-900 leading-snug uppercase">
+                              {patient.TIPO_DE_LOGRADOURO} {patient.LOGRADOURO}
+                            </p>
+                            <div className="flex items-center gap-6">
+                              <div className="flex flex-col">
+                                <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Bairro</span>
+                                <span className="text-xs font-bold text-slate-700 uppercase">{patient.BAIRRO_DE_MORADIA}</span>
+                              </div>
+                              <div className="flex flex-col">
+                                <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">CEP</span>
+                                <span className="text-xs font-bold text-slate-700 tabular-nums">{patient.CEP_LOGRADOURO}</span>
+                              </div>
                             </div>
                           </div>
                         </div>
