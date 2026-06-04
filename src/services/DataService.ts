@@ -37,8 +37,12 @@ const UPLOAD_REQUEST_TIMEOUT_MS = 90000;
 const BATCH_UPLOAD_SIZE = 80;
 const MIN_BATCH_UPLOAD_SIZE = 10;
 const BATCH_UPLOAD_COOLDOWN_MS = 125;
-const FALLBACK_UPLOAD_PARALLEL_REQUESTS = 2;
-const FALLBACK_UPLOAD_COOLDOWN_MS = 50;
+const FALLBACK_UPLOAD_GROUP_SIZE = 72;
+const FALLBACK_UPLOAD_INITIAL_PARALLEL_REQUESTS = 6;
+const FALLBACK_UPLOAD_MAX_PARALLEL_REQUESTS = 8;
+const FALLBACK_UPLOAD_MIN_PARALLEL_REQUESTS = 2;
+const FALLBACK_UPLOAD_RETRY_LIMIT = 2;
+const FALLBACK_UPLOAD_BACKOFF_MS = 200;
 const LOCAL_CACHE_MAX_ROWS = 5000;
 const PATIENTS_COLLECTION = 'buscapac53_pacientes';
 
@@ -547,22 +551,48 @@ export const DataService = {
     let failureCount = 0;
     let firstError: unknown = null;
 
-    for (let i = 0; i < patients.length; i += FALLBACK_UPLOAD_PARALLEL_REQUESTS) {
-      const slice = patients.slice(i, i + FALLBACK_UPLOAD_PARALLEL_REQUESTS);
-      const results = await Promise.allSettled(slice.map((patient) => DataService.createPatient(patient)));
+    const pending = patients.map((patient) => ({
+      patient,
+      attempts: 0,
+    }));
 
-      for (const result of results) {
+    let concurrency = Math.min(FALLBACK_UPLOAD_INITIAL_PARALLEL_REQUESTS, pending.length || FALLBACK_UPLOAD_INITIAL_PARALLEL_REQUESTS);
+
+    while (pending.length > 0) {
+      const slice = pending.splice(0, concurrency);
+      const results = await Promise.allSettled(slice.map((entry) => DataService.createPatient(entry.patient)));
+      const retryQueue: Array<{ patient: Partial<PatientData>; attempts: number }> = [];
+
+      for (let i = 0; i < results.length; i++) {
+        const result = results[i];
+        const entry = slice[i];
+
         if (result.status === 'fulfilled') {
           successCount++;
-        } else {
-          failureCount++;
-          if (!firstError) {
-            firstError = result.reason;
-          }
+          continue;
+        }
+
+        if (isRetryableUploadError(result.reason) && entry.attempts < FALLBACK_UPLOAD_RETRY_LIMIT) {
+          retryQueue.push({
+            patient: entry.patient,
+            attempts: entry.attempts + 1,
+          });
+          continue;
+        }
+
+        failureCount++;
+        if (!firstError) {
+          firstError = result.reason;
         }
       }
 
-      await sleep(FALLBACK_UPLOAD_COOLDOWN_MS);
+      if (retryQueue.length > 0) {
+        pending.unshift(...retryQueue);
+        concurrency = Math.max(FALLBACK_UPLOAD_MIN_PARALLEL_REQUESTS, Math.floor(concurrency / 2));
+        await sleep(FALLBACK_UPLOAD_BACKOFF_MS);
+      } else if (concurrency < FALLBACK_UPLOAD_MAX_PARALLEL_REQUESTS) {
+        concurrency++;
+      }
     }
 
     return {
@@ -582,7 +612,7 @@ export const DataService = {
     let firstError: unknown = null;
     let offset = 0;
     let currentBatchSize = batchApiAvailable === false
-      ? MIN_BATCH_UPLOAD_SIZE
+      ? Math.min(FALLBACK_UPLOAD_GROUP_SIZE, normalizedPatients.length || FALLBACK_UPLOAD_GROUP_SIZE)
       : Math.min(BATCH_UPLOAD_SIZE, normalizedPatients.length || BATCH_UPLOAD_SIZE);
 
     while (offset < normalizedPatients.length) {
@@ -623,11 +653,7 @@ export const DataService = {
             }
 
             offset += slice.length;
-            currentBatchSize = MIN_BATCH_UPLOAD_SIZE;
-
-            if (offset < normalizedPatients.length) {
-              await sleep(FALLBACK_UPLOAD_COOLDOWN_MS);
-            }
+            currentBatchSize = Math.min(FALLBACK_UPLOAD_GROUP_SIZE, normalizedPatients.length - offset || FALLBACK_UPLOAD_GROUP_SIZE);
 
             continue;
           }
@@ -643,10 +669,7 @@ export const DataService = {
       }
 
       offset += slice.length;
-
-      if (offset < normalizedPatients.length) {
-        await sleep(FALLBACK_UPLOAD_COOLDOWN_MS);
-      }
+      currentBatchSize = Math.min(FALLBACK_UPLOAD_GROUP_SIZE, normalizedPatients.length - offset || FALLBACK_UPLOAD_GROUP_SIZE);
     }
 
     return {

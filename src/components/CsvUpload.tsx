@@ -5,9 +5,9 @@ import { DataService, pb } from '../services/DataService';
 import Papa from 'papaparse';
 import { normalizeString } from '../utils/stringUtils';
 
-const PARSE_CHUNK_SIZE = 2 * 1024 * 1024;
-const UPLOAD_BUFFER_SIZE = 160;
-const PROGRESS_REPORT_STEP = 500;
+const PARSE_CHUNK_SIZE = 4 * 1024 * 1024;
+const UPLOAD_BUFFER_SIZE = 480;
+const PROGRESS_REPORT_STEP = 1000;
 const MAX_FAILURES_BEFORE_ABORT = 20;
 const MAX_FILE_SIZE = 1024 * 1024 * 1024;
 const MAX_FILE_SIZE_LABEL = '1GB';
