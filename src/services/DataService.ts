@@ -40,8 +40,6 @@ const BATCH_UPLOAD_COOLDOWN_MS = 125;
 const FALLBACK_UPLOAD_PARALLEL_REQUESTS = 2;
 const FALLBACK_UPLOAD_COOLDOWN_MS = 50;
 const LOCAL_CACHE_MAX_ROWS = 5000;
-const DELETE_PARALLEL_REQUESTS = 2;
-const DELETE_PAGE_SIZE = 200;
 const PATIENTS_COLLECTION = 'buscapac53_pacientes';
 
 const STORAGE_KEY = 'buscapac_db';
@@ -169,6 +167,24 @@ const buildUploadFriendlySchema = (schema: any[]) => {
   });
 };
 
+const buildCollectionClone = (collection: any) => {
+  const cleanedSchema = buildUploadFriendlySchema(collection.schema);
+
+  return {
+    name: collection.name,
+    type: collection.type,
+    schema: cleanedSchema,
+    listRule: collection.listRule,
+    viewRule: collection.viewRule,
+    createRule: collection.createRule,
+    updateRule: collection.updateRule,
+    deleteRule: collection.deleteRule,
+    indexes: collection.indexes,
+    options: collection.options,
+    system: false
+  };
+};
+
 const countPatientsRecords = async () => {
   const result = await pb.collection(PATIENTS_COLLECTION).getList(1, 1, {
     fields: 'id',
@@ -177,35 +193,6 @@ const countPatientsRecords = async () => {
   });
 
   return result.totalItems;
-};
-
-const purgePatientsRecordsManually = async () => {
-  let totalDeleted = 0;
-
-  while (true) {
-    const result = await pb.collection(PATIENTS_COLLECTION).getList(1, DELETE_PAGE_SIZE, {
-      fields: 'id',
-      sort: 'id',
-      $autoCancel: false,
-      requestKey: null
-    });
-
-    if (result.items.length === 0) {
-      return totalDeleted;
-    }
-
-    for (let i = 0; i < result.items.length; i += DELETE_PARALLEL_REQUESTS) {
-      const slice = result.items.slice(i, i + DELETE_PARALLEL_REQUESTS);
-      await Promise.all(
-        slice.map((item) => pb.collection(PATIENTS_COLLECTION).delete(item.id, {
-          $autoCancel: false,
-          requestKey: null
-        }))
-      );
-      totalDeleted += slice.length;
-      await sleep(BATCH_UPLOAD_COOLDOWN_MS);
-    }
-  }
 };
 
 const buildRemoteNameFilter = (query: string): string => {
@@ -444,23 +431,13 @@ export const DataService = {
       return { removedCount: 0 };
     }
 
-    try {
-      const collection = await pb.collections.getOne(PATIENTS_COLLECTION);
-      const cleanedSchema = buildUploadFriendlySchema(collection.schema);
+    const collection = await pb.collections.getOne(PATIENTS_COLLECTION);
+    const collectionClone = buildCollectionClone(collection);
 
-      if (JSON.stringify(collection.schema) !== JSON.stringify(cleanedSchema)) {
+    try {
+      if (JSON.stringify(collection.schema) !== JSON.stringify(collectionClone.schema)) {
         await pb.collections.update(collection.id, {
-          name: collection.name,
-          type: collection.type,
-          schema: cleanedSchema,
-          listRule: collection.listRule,
-          viewRule: collection.viewRule,
-          createRule: collection.createRule,
-          updateRule: collection.updateRule,
-          deleteRule: collection.deleteRule,
-          indexes: collection.indexes,
-          options: collection.options,
-          system: false
+          ...collectionClone
         });
         await sleep(300);
       }
@@ -481,14 +458,26 @@ export const DataService = {
       if (isUnsupportedEndpointError(err)) {
         truncateApiAvailable = false;
       } else {
-        console.warn('Falha no truncate rápido, usando remoção manual...', err);
+        console.warn('Falha no truncate rápido, recriando coleção...', err);
       }
     }
 
     let remainingCount = await countPatientsRecords();
 
     if (remainingCount > 0) {
-      await purgePatientsRecordsManually();
+      console.warn(`truncate rápido não limpou tudo. Recriando coleção ${PATIENTS_COLLECTION}...`);
+      await withTimeout(
+        pb.collections.delete(collection.id),
+        UPLOAD_REQUEST_TIMEOUT_MS,
+        'Timeout ao remover coleção antiga no PocketBase.'
+      );
+      await sleep(500);
+      await withTimeout(
+        pb.collections.create(collectionClone),
+        UPLOAD_REQUEST_TIMEOUT_MS,
+        'Timeout ao recriar coleção no PocketBase.'
+      );
+      await sleep(500);
       remainingCount = await countPatientsRecords();
     }
 

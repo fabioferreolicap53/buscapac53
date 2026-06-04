@@ -56,7 +56,7 @@ export default function CsvUpload() {
       setProgressText(
         truncateResult.removedCount === 0
           ? 'Base antiga já estava vazia.'
-          : `${truncateResult.removedCount.toLocaleString()} registros antigos removidos.`
+          : `${truncateResult.removedCount.toLocaleString()} registros antigos removidos de uma só vez.`
       );
       setProgressPercent(22);
 
