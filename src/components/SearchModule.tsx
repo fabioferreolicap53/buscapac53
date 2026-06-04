@@ -208,21 +208,42 @@ export default function SearchModule() {
                   style={{ animationDelay: `${idx * 50}ms` }}
                 >
                   {/* Top Bar Status & Location */}
-                  <div className="bg-gradient-to-r from-slate-50 to-white px-6 sm:px-8 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-                      <span className="text-[11px] font-black text-slate-500 tracking-widest uppercase">{patient.SITUACAO_USUARIO || 'Ativo'}</span>
-                    </div>
-                    <div className="flex items-center gap-2 sm:gap-4 flex-wrap justify-end">
-                      <div className="flex items-center gap-1.5 bg-blue-50/50 px-3 py-1.5 rounded-lg border border-blue-100/50">
-                        <MapPin size={12} className="text-blue-500" />
-                        <span className="text-[10px] font-black text-blue-900 uppercase tracking-widest">{patient.NOME_UNIDADE_DE_SAUDE}</span>
+                  <div className="relative px-6 sm:px-8 py-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-50/30">
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-2 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-100">
+                        <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                        <span className="text-[10px] font-black text-emerald-700 tracking-widest uppercase">{patient.SITUACAO_USUARIO || 'Ativo'}</span>
                       </div>
-                      <div className="flex items-center gap-1.5 bg-emerald-50/50 px-3 py-1.5 rounded-lg border border-emerald-100/50">
-                        <Activity size={12} className="text-emerald-500" />
-                        <span className="text-[10px] font-black text-emerald-900 uppercase tracking-widest">
-                          EQ {patient.NOME_EQUIPE_DE_SAUDE} <span className="text-emerald-300 mx-0.5">•</span> MA {patient.CODIGO_MICROAREA}
-                        </span>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-3 sm:gap-4">
+                      {/* Unidade Badge - Destaque Máximo */}
+                      <div className="flex items-center gap-3 bg-white px-4 py-2 rounded-2xl shadow-sm border border-blue-100 group/unit hover:border-blue-300 transition-colors">
+                        <div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-lg shadow-blue-200">
+                          <MapPin size={16} strokeWidth={2.5} />
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-[8px] font-black text-blue-400 uppercase tracking-widest leading-none mb-1">Unidade de Saúde</span>
+                          <span className="text-sm sm:text-base font-black text-blue-900 uppercase tracking-tight leading-none">{patient.NOME_UNIDADE_DE_SAUDE}</span>
+                        </div>
+                      </div>
+
+                      {/* Equipe/Micro Badge - Glass Style */}
+                      <div className="flex items-center gap-3 bg-emerald-500/10 backdrop-blur-sm px-4 py-2 rounded-2xl border border-emerald-500/20 group/team hover:bg-emerald-500/20 transition-colors">
+                        <div className="w-8 h-8 rounded-xl bg-emerald-500 flex items-center justify-center text-white shadow-lg shadow-emerald-200">
+                          <Activity size={16} strokeWidth={2.5} />
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <div className="flex flex-col">
+                            <span className="text-[8px] font-black text-emerald-600/60 uppercase tracking-widest leading-none mb-1">Equipe</span>
+                            <span className="text-sm font-black text-emerald-900 uppercase tracking-tight leading-none">{patient.NOME_EQUIPE_DE_SAUDE}</span>
+                          </div>
+                          <div className="w-px h-6 bg-emerald-500/20" />
+                          <div className="flex flex-col">
+                            <span className="text-[8px] font-black text-emerald-600/60 uppercase tracking-widest leading-none mb-1">Micro</span>
+                            <span className="text-sm font-black text-blue-600 uppercase tracking-tight leading-none">{patient.CODIGO_MICROAREA}</span>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
