@@ -29,15 +29,23 @@ export const pb = new PocketBase(import.meta.env.VITE_DB_ADDRESS || 'https://cen
 const REMOTE_TIMEOUT_MS = 15000; // Aumentado para 15s devido à VM lenta com 1GB RAM
 const REMOTE_NAME_PAGE_SIZE = 200;
 const REMOTE_NAME_STOP_WORDS = new Set(['da', 'de', 'do', 'das', 'dos', 'e']);
-const UPLOAD_REQUEST_TIMEOUT_MS = 60000;
-const UPLOAD_PARALLEL_REQUESTS = 2;
-const UPLOAD_COOLDOWN_MS = 75;
+const UPLOAD_REQUEST_TIMEOUT_MS = 90000;
+const BATCH_UPLOAD_SIZE = 80;
+const MIN_BATCH_UPLOAD_SIZE = 10;
+const BATCH_UPLOAD_COOLDOWN_MS = 125;
+const FALLBACK_UPLOAD_PARALLEL_REQUESTS = 2;
+const FALLBACK_UPLOAD_COOLDOWN_MS = 50;
 const LOCAL_CACHE_MAX_ROWS = 5000;
 const DELETE_PARALLEL_REQUESTS = 2;
+const DELETE_PAGE_SIZE = 200;
+const PATIENTS_COLLECTION = 'buscapac53_pacientes';
 
 const STORAGE_KEY = 'buscapac_db';
 const UPDATE_KEY = 'buscapac_last_update';
 const HISTORY_KEY = 'buscapac_upload_history';
+
+let batchApiAvailable: boolean | null = null;
+let truncateApiAvailable: boolean | null = null;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -60,6 +68,77 @@ const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number, errorMessa
 
 const escapeFilterValue = (value: string): string => {
   return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+};
+
+const getErrorStatus = (error: unknown): number | null => {
+  if (!error || typeof error !== 'object') {
+    return null;
+  }
+
+  const maybeStatus = (error as any).status;
+  if (typeof maybeStatus === 'number') {
+    return maybeStatus;
+  }
+
+  const responseStatus = (error as any).response?.status;
+  return typeof responseStatus === 'number' ? responseStatus : null;
+};
+
+const isUnsupportedEndpointError = (error: unknown): boolean => {
+  const status = getErrorStatus(error);
+  return status === 400 || status === 404 || status === 405 || status === 501;
+};
+
+const isRetryableUploadError = (error: unknown): boolean => {
+  const status = getErrorStatus(error);
+
+  if (status === 408 || status === 425 || status === 429) {
+    return true;
+  }
+
+  if (status !== null && status >= 500) {
+    return true;
+  }
+
+  const message = error instanceof Error ? error.message.toLowerCase() : '';
+  return message.includes('timeout') || message.includes('network');
+};
+
+const buildPatientPayload = (patient: Partial<PatientData>) => {
+  const pbRecord: Record<string, any> = {};
+
+  for (const key in patient) {
+    const val = (patient as any)[key];
+    if (val !== undefined && key !== 'id' && val !== '') {
+      pbRecord[key] = val;
+    }
+  }
+
+  return pbRecord;
+};
+
+const buildUploadFriendlySchema = (schema: any[]) => {
+  return schema.map((field: any) => {
+    const cleaned = {
+      ...field,
+      required: false,
+    };
+
+    if (field.type === 'text') {
+      cleaned.options = {
+        ...field.options,
+        min: null,
+        max: null,
+        pattern: ''
+      };
+    }
+
+    if (field.name === 'DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO' || field.name === 'DATA_ULTIMA_ATUALIZACAO_DO_CADAS') {
+      cleaned.name = 'DATA_ULTIMA_ATUALIZACAO';
+    }
+
+    return cleaned;
+  });
 };
 
 const buildRemoteNameFilter = (query: string): string => {
@@ -159,7 +238,7 @@ export const DataService = {
 
       if (onProgress) onProgress(`Enviando ${data.length} novos registros...`, 30);
       
-      const batchSize = 5;
+      const batchSize = BATCH_UPLOAD_SIZE * 2;
       for (let i = 0; i < data.length; i += batchSize) {
         const batch = data.slice(i, i + batchSize);
         const result = await DataService.createPatientsBatch(batch);
@@ -193,7 +272,7 @@ export const DataService = {
         const normalizedQuery = normalizeString(query);
         const tokens = normalizedQuery.split(' ').filter(t => t.length > 0);
         const records = await withTimeout(
-          pb.collection('buscapac53_pacientes').getList(1, REMOTE_NAME_PAGE_SIZE, {
+          pb.collection(PATIENTS_COLLECTION).getList(1, REMOTE_NAME_PAGE_SIZE, {
             filter: buildRemoteNameFilter(query),
             sort: 'NOME_DA_MAE_PESSOA_CADASTRADA,-DATA_ULTIMA_ATUALIZACAO',
             $autoCancel: false
@@ -215,7 +294,7 @@ export const DataService = {
       }
 
       const records = await withTimeout(
-        pb.collection('buscapac53_pacientes').getList(1, 50, {
+        pb.collection(PATIENTS_COLLECTION).getList(1, 50, {
           filter: `N_CNS_DA_PESSOA_CADASTRADA = "${query}"`,
           sort: 'NOME_DA_MAE_PESSOA_CADASTRADA,-DATA_ULTIMA_ATUALIZACAO',
           $autoCancel: false
@@ -257,7 +336,7 @@ export const DataService = {
       }));
 
       // 2. Buscar contagem total de pacientes
-      const patientsResult = await pb.collection('buscapac53_pacientes').getList(1, 1, {
+      const patientsResult = await pb.collection(PATIENTS_COLLECTION).getList(1, 1, {
         fields: 'id',
       });
       const totalCount = patientsResult.totalItems;
@@ -286,94 +365,137 @@ export const DataService = {
   truncateCollection: async () => {
     await DataService.authenticate();
     try {
-      const collection = await pb.collections.getOne('buscapac53_pacientes');
-      
-      // Remove min/max length limits and required constraints from schema fields
-      const schemaCleaned = collection.schema.map((field: any) => {
-        const cleaned = {
-          ...field,
-          required: false, // Ensure no field is required to avoid 400 errors on empty CSV cells
-        };
+      const collection = await pb.collections.getOne(PATIENTS_COLLECTION);
+      const cleanedSchema = buildUploadFriendlySchema(collection.schema);
 
-        if (field.type === 'text') {
-          cleaned.options = {
-            ...field.options,
-            min: null,
-            max: null,
-            pattern: ''
-          };
-        }
+      if (JSON.stringify(collection.schema) !== JSON.stringify(cleanedSchema)) {
+        await pb.collections.update(collection.id, {
+          name: collection.name,
+          type: collection.type,
+          schema: cleanedSchema,
+          listRule: collection.listRule,
+          viewRule: collection.viewRule,
+          createRule: collection.createRule,
+          updateRule: collection.updateRule,
+          deleteRule: collection.deleteRule,
+          indexes: collection.indexes,
+          options: collection.options,
+          system: false
+        });
+        await sleep(300);
+      }
 
-        // Standardize the date field name if it's the old long version
-        if (field.name === 'DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO' || field.name === 'DATA_ULTIMA_ATUALIZACAO_DO_CADAS') {
-          cleaned.name = 'DATA_ULTIMA_ATUALIZACAO';
-        }
+      if (truncateApiAvailable !== false) {
+        await withTimeout(
+          pb.send(`/api/collections/${encodeURIComponent(PATIENTS_COLLECTION)}/truncate`, {
+            method: 'DELETE',
+            $autoCancel: false,
+            requestKey: null
+          }),
+          UPLOAD_REQUEST_TIMEOUT_MS,
+          'Timeout ao truncar coleção no PocketBase.'
+        );
+        truncateApiAvailable = true;
+        return true;
+      }
+    } catch (err) {
+      if (isUnsupportedEndpointError(err)) {
+        truncateApiAvailable = false;
+      } else {
+        console.warn('Falha no truncate rápido, usando remoção manual...', err);
+      }
+    }
 
-        return cleaned;
+    let hasMore = true;
+    while (hasMore) {
+      const result = await pb.collection(PATIENTS_COLLECTION).getList(1, DELETE_PAGE_SIZE, {
+        fields: 'id',
+        $autoCancel: false,
+        requestKey: null
       });
 
-      const schemaClone = {
-        name: collection.name,
-        type: collection.type,
-        schema: schemaCleaned,
-        listRule: collection.listRule,
-        viewRule: collection.viewRule,
-        createRule: collection.createRule,
-        updateRule: collection.updateRule,
-        deleteRule: collection.deleteRule,
-        indexes: collection.indexes,
-        options: collection.options,
-        system: false
-      };
-      
-      await pb.collections.delete(collection.id);
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      await pb.collections.create(schemaClone);
-      await sleep(1000);
-      return true;
-    } catch (err) {
-      console.error('Erro ao truncar via recriação, tentando deleção manual...', err);
-      let hasMore = true;
-      while (hasMore) {
-        const result = await pb.collection('buscapac53_pacientes').getList(1, 200, { fields: 'id', $autoCancel: false });
-        if (result.items.length === 0) break;
-
-        for (let i = 0; i < result.items.length; i += DELETE_PARALLEL_REQUESTS) {
-          const slice = result.items.slice(i, i + DELETE_PARALLEL_REQUESTS);
-          await Promise.all(
-            slice.map((item) => pb.collection('buscapac53_pacientes').delete(item.id, { $autoCancel: false, requestKey: null }))
-          );
-          await sleep(UPLOAD_COOLDOWN_MS);
-        }
-
-        if (result.items.length < 200) hasMore = false;
+      if (result.items.length === 0) {
+        break;
       }
-      return true;
+
+      for (let i = 0; i < result.items.length; i += DELETE_PARALLEL_REQUESTS) {
+        const slice = result.items.slice(i, i + DELETE_PARALLEL_REQUESTS);
+        await Promise.all(
+          slice.map((item) => pb.collection(PATIENTS_COLLECTION).delete(item.id, {
+            $autoCancel: false,
+            requestKey: null
+          }))
+        );
+        await sleep(BATCH_UPLOAD_COOLDOWN_MS);
+      }
+
+      hasMore = result.items.length === DELETE_PAGE_SIZE;
     }
+
+    return true;
   },
 
   createPatient: async (patient: Partial<PatientData>) => {
-    const pbRecord: Record<string, any> = {};
-    for (const key in patient) {
-      const val = (patient as any)[key];
-      if (val !== undefined && key !== 'id' && val !== '') {
-        pbRecord[key] = val;
-      }
-    }
+    const pbRecord = buildPatientPayload(patient);
     return await withTimeout(
-      pb.collection('buscapac53_pacientes').create(pbRecord, { $autoCancel: false, requestKey: null }),
+      pb.collection(PATIENTS_COLLECTION).create(pbRecord, { $autoCancel: false, requestKey: null }),
       UPLOAD_REQUEST_TIMEOUT_MS,
       'Timeout ao criar registro no PocketBase.'
     );
   },
 
-  createPatientsBatch: async (patients: Partial<PatientData>[]) => {
+  createPatientsBatchViaApi: async (patients: Partial<PatientData>[]) => {
+    const formData = new FormData();
+    formData.append('@jsonPayload', JSON.stringify({
+      requests: patients.map((patient) => ({
+        method: 'POST',
+        url: `/api/collections/${encodeURIComponent(PATIENTS_COLLECTION)}/records`,
+        body: buildPatientPayload(patient)
+      }))
+    }));
+
+    const result = await withTimeout(
+      pb.send<Array<{ status: number; body: any }>>('/api/batch', {
+        method: 'POST',
+        body: formData,
+        $autoCancel: false,
+        requestKey: null
+      }),
+      UPLOAD_REQUEST_TIMEOUT_MS,
+      'Timeout no upload em lote para o PocketBase.'
+    );
+
+    batchApiAvailable = true;
+
     let successCount = 0;
     let failureCount = 0;
     let firstError: unknown = null;
 
-    for (let i = 0; i < patients.length; i += UPLOAD_PARALLEL_REQUESTS) {
-      const slice = patients.slice(i, i + UPLOAD_PARALLEL_REQUESTS);
+    for (const item of result) {
+      if (item?.status >= 200 && item?.status < 300) {
+        successCount++;
+      } else {
+        failureCount++;
+        if (!firstError) {
+          firstError = new Error(`Falha em item do lote: ${JSON.stringify(item?.body || { status: item?.status })}`);
+        }
+      }
+    }
+
+    return {
+      successCount,
+      failureCount,
+      firstError
+    };
+  },
+
+  createPatientsBatchFallback: async (patients: Partial<PatientData>[]) => {
+    let successCount = 0;
+    let failureCount = 0;
+    let firstError: unknown = null;
+
+    for (let i = 0; i < patients.length; i += FALLBACK_UPLOAD_PARALLEL_REQUESTS) {
+      const slice = patients.slice(i, i + FALLBACK_UPLOAD_PARALLEL_REQUESTS);
       const results = await Promise.allSettled(slice.map((patient) => DataService.createPatient(patient)));
 
       for (const result of results) {
@@ -387,7 +509,91 @@ export const DataService = {
         }
       }
 
-      await sleep(UPLOAD_COOLDOWN_MS);
+      await sleep(FALLBACK_UPLOAD_COOLDOWN_MS);
+    }
+
+    return {
+      successCount,
+      failureCount,
+      firstError
+    };
+  },
+
+  createPatientsBatch: async (patients: Partial<PatientData>[]) => {
+    const normalizedPatients = patients
+      .map((patient) => buildPatientPayload(patient))
+      .filter((patient) => Object.keys(patient).length > 0);
+
+    let successCount = 0;
+    let failureCount = 0;
+    let firstError: unknown = null;
+    let offset = 0;
+    let currentBatchSize = batchApiAvailable === false
+      ? MIN_BATCH_UPLOAD_SIZE
+      : Math.min(BATCH_UPLOAD_SIZE, normalizedPatients.length || BATCH_UPLOAD_SIZE);
+
+    while (offset < normalizedPatients.length) {
+      const slice = normalizedPatients.slice(offset, offset + currentBatchSize);
+
+      if (batchApiAvailable !== false) {
+        try {
+          const batchResult = await DataService.createPatientsBatchViaApi(slice);
+          successCount += batchResult.successCount;
+          failureCount += batchResult.failureCount;
+
+          if (!firstError && batchResult.firstError) {
+            firstError = batchResult.firstError;
+          }
+
+          offset += slice.length;
+          currentBatchSize = Math.min(BATCH_UPLOAD_SIZE, normalizedPatients.length - offset || BATCH_UPLOAD_SIZE);
+
+          if (offset < normalizedPatients.length) {
+            await sleep(BATCH_UPLOAD_COOLDOWN_MS);
+          }
+
+          continue;
+        } catch (error) {
+          if (isUnsupportedEndpointError(error)) {
+            batchApiAvailable = false;
+          } else if (isRetryableUploadError(error) && slice.length > MIN_BATCH_UPLOAD_SIZE) {
+            currentBatchSize = Math.max(MIN_BATCH_UPLOAD_SIZE, Math.floor(slice.length / 2));
+            await sleep(BATCH_UPLOAD_COOLDOWN_MS);
+            continue;
+          } else {
+            const fallbackResult = await DataService.createPatientsBatchFallback(slice);
+            successCount += fallbackResult.successCount;
+            failureCount += fallbackResult.failureCount;
+
+            if (!firstError) {
+              firstError = fallbackResult.firstError || error;
+            }
+
+            offset += slice.length;
+            currentBatchSize = MIN_BATCH_UPLOAD_SIZE;
+
+            if (offset < normalizedPatients.length) {
+              await sleep(FALLBACK_UPLOAD_COOLDOWN_MS);
+            }
+
+            continue;
+          }
+        }
+      }
+
+      const fallbackResult = await DataService.createPatientsBatchFallback(slice);
+      successCount += fallbackResult.successCount;
+      failureCount += fallbackResult.failureCount;
+
+      if (!firstError && fallbackResult.firstError) {
+        firstError = fallbackResult.firstError;
+      }
+
+      offset += slice.length;
+
+      if (offset < normalizedPatients.length) {
+        await sleep(FALLBACK_UPLOAD_COOLDOWN_MS);
+      }
     }
 
     return {

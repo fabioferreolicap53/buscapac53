@@ -5,8 +5,9 @@ import { DataService, pb } from '../services/DataService';
 import Papa from 'papaparse';
 import { normalizeString } from '../utils/stringUtils';
 
-const PARSE_CHUNK_SIZE = 512 * 1024;
-const UPLOAD_BATCH_SIZE = 5;
+const PARSE_CHUNK_SIZE = 2 * 1024 * 1024;
+const UPLOAD_BUFFER_SIZE = 160;
+const PROGRESS_REPORT_STEP = 500;
 const MAX_FAILURES_BEFORE_ABORT = 20;
 const MAX_FILE_SIZE = 1024 * 1024 * 1024;
 const MAX_FILE_SIZE_LABEL = '1GB';
@@ -57,28 +58,32 @@ export default function CsvUpload() {
       let totalRead = 0;
       let totalSaved = 0;
       let totalFailed = 0;
-      let chunkCount = 0;
-      const flushBatch = async (batch: any[]) => {
-        if (batch.length === 0) {
-          return;
-        }
+      const uploadBuffer: any[] = [];
+      let lastProgressReport = 0;
+      const flushBatch = async (force: boolean = false) => {
+        while (uploadBuffer.length >= UPLOAD_BUFFER_SIZE || (force && uploadBuffer.length > 0)) {
+          const nextBatch = uploadBuffer.splice(0, force ? uploadBuffer.length : UPLOAD_BUFFER_SIZE);
+          const result = await DataService.createPatientsBatch(nextBatch);
+          totalSaved += result.successCount;
+          totalFailed += result.failureCount;
 
-        const result = await DataService.createPatientsBatch(batch);
-        totalSaved += result.successCount;
-        totalFailed += result.failureCount;
-
-        if (result.firstError) {
-          console.error('Erro no lote:', result.firstError);
-          const responseData = (result.firstError as any)?.response?.data;
-          if (responseData) {
-            console.error('Detalhes do erro:', JSON.stringify(responseData));
+          if (result.firstError) {
+            console.error('Erro no lote:', result.firstError);
+            const responseData = (result.firstError as any)?.response?.data;
+            if (responseData) {
+              console.error('Detalhes do erro:', JSON.stringify(responseData));
+            }
           }
-        }
 
-        setProgressText(`${totalSaved} salvos • ${totalFailed} falhas`);
+          const processedRows = totalSaved + totalFailed;
+          if (processedRows - lastProgressReport >= PROGRESS_REPORT_STEP || totalFailed > 0 || force) {
+            lastProgressReport = processedRows;
+            setProgressText(`${totalSaved} salvos • ${totalFailed} falhas`);
+          }
 
-        if (totalSaved === 0 && totalFailed >= MAX_FAILURES_BEFORE_ABORT) {
-          throw new Error('Muitas falhas consecutivas no início do upload. Processo abortado para proteger PocketBase.');
+          if (totalSaved === 0 && totalFailed >= MAX_FAILURES_BEFORE_ABORT) {
+            throw new Error('Muitas falhas consecutivas no início do upload. Processo abortado para proteger PocketBase.');
+          }
         }
       };
 
@@ -137,7 +142,6 @@ export default function CsvUpload() {
 
             try {
               const rows = results.data as string[][];
-              const batch: any[] = [];
 
               for (const row of rows) {
                 if (totalRead === 0 && row[0]?.toLowerCase().includes('unidade')) {
@@ -158,7 +162,7 @@ export default function CsvUpload() {
                   continue;
                 }
 
-                batch.push({
+                uploadBuffer.push({
                   NOME_UNIDADE_DE_SAUDE: clean[0],
                   NOME_EQUIPE_DE_SAUDE: clean[1],
                   CODIGO_MICROAREA: clean[2],
@@ -175,15 +179,12 @@ export default function CsvUpload() {
                   BAIRRO_DE_MORADIA: clean[13],
                 });
 
-                if (batch.length >= UPLOAD_BATCH_SIZE) {
-                  await flushBatch(batch.splice(0, batch.length));
+                if (uploadBuffer.length >= UPLOAD_BUFFER_SIZE) {
+                  await flushBatch();
                 }
               }
 
-              await flushBatch(batch);
-
-              chunkCount++;
-              const newBytesProcessed = Math.min(chunkCount * PARSE_CHUNK_SIZE, totalFileSize);
+              const newBytesProcessed = Math.min((results.meta as any)?.cursor || totalFileSize, totalFileSize);
               setBytesProcessed(newBytesProcessed);
               const parsePercent = totalFileSize > 0 ? newBytesProcessed / totalFileSize : 0;
               const newPercent = Math.min(20 + Math.floor(parsePercent * 75), 99);
@@ -196,7 +197,12 @@ export default function CsvUpload() {
             }
           },
           complete: async () => {
-            await finishWithSuccess();
+            try {
+              await flushBatch(true);
+              await finishWithSuccess();
+            } catch (error) {
+              finishWithError(error);
+            }
           },
           error: (error) => {
             finishWithError(error);
