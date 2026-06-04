@@ -205,15 +205,15 @@ const buildRemoteNameFilter = (query: string): string => {
     .split(' ')
     .filter((token) => token.length >= 3 && !REMOTE_NAME_STOP_WORDS.has(token.toLowerCase()))
     .sort((a, b) => b.length - a.length)
-    .slice(0, 2); // Reduzido para 2 tokens para simplificar a query no SQLite (VM lenta)
+    .slice(0, 3); // Aumentado para 3 tokens para maior precisão
 
   if (tokens.length === 0) {
     // Busca exata curta se não houver tokens longos
     return `NOME_DA_PESSOA_CADASTRADA ~ "${escapeFilterValue(normalizedQuery)}"`;
   }
 
-  // A busca no PocketBase precisa ser flexível (case-insensitive e acentos já foram limpos no banco)
-  return `NOME_DA_PESSOA_CADASTRADA ~ "${escapeFilterValue(tokens[0])}"`;
+  // Gera um filtro que exige que todos os tokens estejam presentes no nome (AND)
+  return tokens.map(token => `NOME_DA_PESSOA_CADASTRADA ~ "${escapeFilterValue(token)}"`).join(' && ');
 };
 
 export const DataService = {
@@ -251,76 +251,6 @@ export const DataService = {
         console.error('Falha total na autenticação PocketBase:', usersError);
         throw usersError;
       }
-    }
-  },
-
-  saveData: async (data: PatientData[], fileName: string = 'arquivo.csv', onProgress?: (status: string, percentage: number) => void) => {
-    const now = new Date().toLocaleString();
-    const newEntry: UploadHistory = {
-      date: now,
-      count: data.length,
-      fileName: fileName
-    };
-
-    if (onProgress) onProgress('Salvando no cache local...', 5);
-
-    try {
-      if (data.length <= LOCAL_CACHE_MAX_ROWS) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-      } else {
-        localStorage.removeItem(STORAGE_KEY);
-      }
-
-      localStorage.setItem(UPDATE_KEY, now);
-
-      const history = DataService.getHistory();
-      const updatedHistory = [newEntry, ...history].slice(0, 3);
-      localStorage.setItem(HISTORY_KEY, JSON.stringify(updatedHistory));
-    } catch (e) {
-      console.warn('Erro ao salvar no localStorage (Quota excedida).', e);
-      localStorage.removeItem(STORAGE_KEY);
-    }
-
-    try {
-      if (onProgress) onProgress('Autenticando com o servidor...', 10);
-      await DataService.authenticate();
-      
-      try {
-        await pb.collection('buscapac53_historico').create(newEntry);
-      } catch (hErr) {
-        console.warn('Erro ao salvar histórico no PB:', hErr);
-      }
-
-      if (onProgress) onProgress('Limpando registros antigos...', 15);
-      const truncateResult = await DataService.truncateCollection();
-
-      if (onProgress) {
-        const removedLabel = truncateResult.removedCount === 0
-          ? 'Base antiga já estava vazia.'
-          : `${truncateResult.removedCount.toLocaleString()} registros antigos removidos.`;
-        onProgress(removedLabel, 22);
-      }
-
-      if (onProgress) onProgress(`Enviando ${data.length} novos registros...`, 30);
-      
-      const batchSize = BATCH_UPLOAD_SIZE * 2;
-      for (let i = 0; i < data.length; i += batchSize) {
-        const batch = data.slice(i, i + batchSize);
-        const result = await DataService.createPatientsBatch(batch);
-        if (result.failureCount > 0 && result.successCount === 0 && result.firstError) {
-          throw result.firstError;
-        }
-        
-        if (onProgress) {
-          const percent = 30 + Math.floor((i / data.length) * 70);
-          onProgress(`Enviando para o servidor... (${Math.min(i + batch.length, data.length)} de ${data.length})`, percent);
-        }
-      }
-
-      if (onProgress) onProgress('Sincronização concluída!', 100);
-    } catch (error) {
-      if (onProgress) onProgress('Erro na sincronização.', 0);
-      throw error;
     }
   },
 
@@ -430,22 +360,12 @@ export const DataService = {
   truncateCollection: async (): Promise<TruncateResult> => {
     await DataService.authenticate();
 
-    const initialCount = await countPatientsRecords();
-    if (initialCount === 0) {
-      return { removedCount: 0 };
-    }
-
+    // Busca a coleção para ter o schema caso precise recriar
     const collection = await pb.collections.getOne(PATIENTS_COLLECTION);
     const collectionClone = buildCollectionClone(collection);
 
+    // Tenta truncate direto (uma só vez)
     try {
-      if (JSON.stringify(collection.schema) !== JSON.stringify(collectionClone.schema)) {
-        await pb.collections.update(collection.id, {
-          ...collectionClone
-        });
-        await sleep(300);
-      }
-
       if (truncateApiAvailable !== false) {
         await withTimeout(
           pb.send(`/api/collections/${encodeURIComponent(PATIENTS_COLLECTION)}/truncate`, {
@@ -457,39 +377,34 @@ export const DataService = {
           'Timeout ao truncar coleção no PocketBase.'
         );
         truncateApiAvailable = true;
+        return { removedCount: -1 }; // -1 indica que foi atômico (não sabemos o total exato sem contar)
       }
     } catch (err) {
       if (isUnsupportedEndpointError(err)) {
         truncateApiAvailable = false;
-      } else {
-        console.warn('Falha no truncate rápido, recriando coleção...', err);
       }
     }
 
-    let remainingCount = await countPatientsRecords();
-
-    if (remainingCount > 0) {
-      console.warn(`truncate rápido não limpou tudo. Recriando coleção ${PATIENTS_COLLECTION}...`);
+    // Fallback atômico: deletar e recriar
+    console.warn(`Truncate API falhou. Recriando coleção ${PATIENTS_COLLECTION} de uma só vez...`);
+    try {
       await withTimeout(
         pb.collections.delete(collection.id),
         UPLOAD_REQUEST_TIMEOUT_MS,
-        'Timeout ao remover coleção antiga no PocketBase.'
+        'Timeout ao remover coleção antiga.'
       );
-      await sleep(500);
+      await sleep(300);
       await withTimeout(
         pb.collections.create(collectionClone),
         UPLOAD_REQUEST_TIMEOUT_MS,
-        'Timeout ao recriar coleção no PocketBase.'
+        'Timeout ao recriar coleção.'
       );
-      await sleep(500);
-      remainingCount = await countPatientsRecords();
+      await sleep(300);
+      return { removedCount: -1 };
+    } catch (error) {
+      console.error('Falha na recriação atômica da coleção:', error);
+      throw new Error('Não foi possível limpar a base de dados de forma atômica.');
     }
-
-    if (remainingCount > 0) {
-      throw new Error(`Falha ao limpar registros antigos no PocketBase. Restantes: ${remainingCount}.`);
-    }
-
-    return { removedCount: initialCount };
   },
 
   createPatient: async (patient: Partial<PatientData>) => {
@@ -677,46 +592,5 @@ export const DataService = {
       failureCount,
       firstError
     };
-  },
-
-  parseCSV: (csvText: string): PatientData[] => {
-    // Remover BOM se existir
-    const cleanText = csvText.replace(/^\uFEFF/, '');
-    // Lidar com quebras de linha Windows e Unix
-    const lines = cleanText.split(/\r?\n/);
-    const results: PatientData[] = [];
-
-    // Detecção do delimitador: CSVs BR costumam usar ponto e vírgula
-    const delimiter = lines[0].includes(';') ? ';' : ',';
-
-    for (let i = 1; i < lines.length; i++) {
-      if (!lines[i].trim()) continue;
-      
-      // Separar colunas lidando com delimitadores dentro de aspas
-      const cols = lines[i].split(new RegExp(`\\s*${delimiter}\\s*(?=(?:[^"]*"[^"]*")*[^"]*$)`))
-                           .map(c => c.trim().replace(/^"|"$/g, ''));
-                           
-      if (cols.length >= 14) {
-        results.push({
-          NOME_UNIDADE_DE_SAUDE: cols[0].trim(),
-          NOME_EQUIPE_DE_SAUDE: cols[1].trim(),
-          CODIGO_MICROAREA: cols[2],
-          N_CNS_DA_PESSOA_CADASTRADA: cols[3],
-          NOME_DA_PESSOA_CADASTRADA: cols[4],
-          NOME_DA_MAE_PESSOA_CADASTRADA: cols[5],
-          DATA_ULTIMA_ATUALIZACAO: cols[6],
-          SITUACAO_USUARIO: cols[7],
-          SEXO: cols[8],
-          DATA_DE_NASCIMENTO: cols[9],
-          TIPO_DE_LOGRADOURO: cols[10],
-          LOGRADOURO: cols[11],
-          CEP_LOGRADOURO: cols[12],
-          BAIRRO_DE_MORADIA: cols[13],
-        });
-      }
-    }
-    
-    console.log(`ParseCSV: Processou ${results.length} linhas válidas de ${lines.length} totais.`);
-    return results;
   }
 };

@@ -20,7 +20,11 @@ const formatFileSize = (bytes: number) => {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 };
 
-export default function CsvUpload() {
+interface CsvUploadProps {
+  onSuccess?: () => void;
+}
+
+export default function CsvUpload({ onSuccess }: CsvUploadProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [status, setStatus] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle');
   const [progressText, setProgressText] = useState('Lendo arquivo...');
@@ -54,9 +58,11 @@ export default function CsvUpload() {
       setProgressPercent(20);
       const truncateResult = await DataService.truncateCollection();
       setProgressText(
-        truncateResult.removedCount === 0
-          ? 'Base antiga já estava vazia.'
-          : `${truncateResult.removedCount.toLocaleString()} registros antigos removidos de uma só vez.`
+        truncateResult.removedCount === -1
+          ? 'Base antiga limpa de uma só vez.'
+          : truncateResult.removedCount === 0
+            ? 'Base antiga já estava vazia.'
+            : `${truncateResult.removedCount.toLocaleString()} registros antigos removidos.`
       );
       setProgressPercent(22);
 
@@ -134,6 +140,7 @@ export default function CsvUpload() {
             console.error('Erro ao salvar histórico:', hErr);
           }
 
+          if (onSuccess) onSuccess();
           resolve();
         };
 

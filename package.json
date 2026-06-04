@@ -8,6 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist",
+    "clear-db": "tsx scripts/clear-db.ts",
     "lint": "tsc --noEmit"
   },
   "dependencies": {

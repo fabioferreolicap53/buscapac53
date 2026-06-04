@@ -18,6 +18,17 @@ export default function App() {
   const [view, setView] = useState<'search' | 'settings'>('search');
   const [showLogin, setShowLogin] = useState(false);
   const [loginForm, setLoginForm] = useState({ user: '', pass: '' });
+  const [lastUpdate, setLastUpdate] = useState<string | null>(DataService.getLastUpdate());
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      DataService.syncFromRemote().then(result => {
+        if (result) {
+          setLastUpdate(result.lastUpdate);
+        }
+      });
+    }
+  }, [isAuthenticated]);
 
   const handleGlobalLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,7 +58,14 @@ export default function App() {
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    if (loginForm.user === 'daps.cap53@gmail.com' && loginForm.pass === 'daps2022') {
+    const { user, pass } = loginForm;
+    const isValid = 
+      (user === 'daps.cap53@gmail.com' && pass === 'daps2022') ||
+      (user === 'demandas.gabinete.cap5.3@gmail.com' && pass === 'BUSCAPAC@assessoria#2026&') ||
+      (user === 'ouvidoria.cap53@gmail.com' && pass === 'ouvidoria.buscapac53') ||
+      (user === 'nir.cap53@gmail.com' && pass === 'nir.buscapac53');
+
+    if (isValid) {
       setShowLogin(false);
       setView('settings');
       setLoginForm({ user: '', pass: '' });
@@ -55,8 +73,6 @@ export default function App() {
       alert('Acesso negado.');
     }
   };
-
-  const lastUpdate = DataService.getLastUpdate();
 
   if (!isAuthenticated) {
     return (
