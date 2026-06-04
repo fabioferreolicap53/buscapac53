@@ -182,7 +182,7 @@ export default function CsvUpload({ onSuccess }: CsvUploadProps) {
                   N_CNS_DA_PESSOA_CADASTRADA: clean[3],
                   NOME_DA_PESSOA_CADASTRADA: clean[4],
                   NOME_DA_MAE_PESSOA_CADASTRADA: clean[5],
-                  DATA_ULTIMA_ATUALIZACAO: formatDate(clean[6]),
+                  DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO: formatDate(clean[6]),
                   SITUACAO_USUARIO: clean[7],
                   SEXO: clean[8],
                   DATA_DE_NASCIMENTO: formatDate(clean[9]),

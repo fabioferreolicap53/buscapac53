@@ -58,8 +58,8 @@ export default function SearchModule() {
         return parts[2] + parts[1] + parts[0];
       };
 
-      const dateA = formatSortDate(a.DATA_ULTIMA_ATUALIZACAO);
-      const dateB = formatSortDate(b.DATA_ULTIMA_ATUALIZACAO);
+      const dateA = formatSortDate(a.DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO);
+      const dateB = formatSortDate(b.DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO);
 
       return dateB.localeCompare(dateA);
     });
@@ -278,8 +278,8 @@ export default function SearchModule() {
                           </div>
                           <div className="min-w-0 flex-1">
                             <p className="text-[7px] sm:text-[8px] font-black uppercase tracking-widest text-slate-500">ÚLTIMA ATUALIZAÇÃO</p>
-                            <p className={`text-[11px] sm:text-xs font-black leading-tight ${patient.DATA_ULTIMA_ATUALIZACAO ? 'text-slate-800' : 'text-slate-300'}`}>
-                              {patient.DATA_ULTIMA_ATUALIZACAO || '—'}
+                            <p className={`text-[11px] sm:text-xs font-black leading-tight ${patient.DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO ? 'text-slate-800' : 'text-slate-300'}`}>
+                              {patient.DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO || '—'}
                             </p>
                           </div>
                         </div>

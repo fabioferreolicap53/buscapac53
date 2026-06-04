@@ -9,7 +9,7 @@ export interface PatientData {
   N_CNS_DA_PESSOA_CADASTRADA: string;
   NOME_DA_PESSOA_CADASTRADA: string;
   NOME_DA_MAE_PESSOA_CADASTRADA: string;
-  DATA_ULTIMA_ATUALIZACAO: string;
+  DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO: string;
   SITUACAO_USUARIO: string;
   SEXO: string;
   DATA_DE_NASCIMENTO: string;
@@ -163,10 +163,6 @@ const buildUploadFriendlySchema = (schema: any[]) => {
       };
     }
 
-    if (field.name === 'DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO' || field.name === 'DATA_ULTIMA_ATUALIZACAO_DO_CADAS') {
-      cleaned.name = 'DATA_ULTIMA_ATUALIZACAO';
-    }
-
     return cleaned;
   });
 };
@@ -213,7 +209,7 @@ const buildRemoteNameFilter = (query: string): string => {
   }
 
   // Gera um filtro que exige que todos os tokens estejam presentes no nome (AND)
-  return tokens.map(token => `NOME_DA_PESSOA_CADASTRADA ~ "${escapeFilterValue(token)}"`).join(' && ');
+  return tokens.map(token => `(NOME_DA_PESSOA_CADASTRADA ~ "${escapeFilterValue(token)}")`).join(' && ');
 };
 
 export const DataService = {
@@ -269,7 +265,7 @@ export const DataService = {
         const records = await withTimeout(
           pb.collection(PATIENTS_COLLECTION).getList(1, REMOTE_NAME_PAGE_SIZE, {
             filter: buildRemoteNameFilter(query),
-            sort: 'NOME_DA_MAE_PESSOA_CADASTRADA,-DATA_ULTIMA_ATUALIZACAO',
+            sort: 'NOME_DA_MAE_PESSOA_CADASTRADA,-DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO',
             $autoCancel: false
           }),
           REMOTE_TIMEOUT_MS,
@@ -291,7 +287,7 @@ export const DataService = {
       const records = await withTimeout(
         pb.collection(PATIENTS_COLLECTION).getList(1, 50, {
           filter: `N_CNS_DA_PESSOA_CADASTRADA = "${query}"`,
-          sort: 'NOME_DA_MAE_PESSOA_CADASTRADA,-DATA_ULTIMA_ATUALIZACAO',
+          sort: 'NOME_DA_MAE_PESSOA_CADASTRADA,-DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO',
           $autoCancel: false
         }),
         REMOTE_TIMEOUT_MS,
