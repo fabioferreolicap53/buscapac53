@@ -277,13 +277,25 @@ export const DataService = {
       throw new Error('Credenciais do PocketBase ausentes.');
     }
 
+    // PocketBase v0.23+ usa _superusers, v0.21 usa admins
+    const tryAuth = async () => {
+      try {
+        return await withTimeout(
+          pb.collection('_superusers').authWithPassword(email, password),
+          REMOTE_TIMEOUT_MS,
+          'Timeout na autenticação admin.'
+        );
+      } catch {
+        return await withTimeout(
+          pb.admins.authWithPassword(email, password),
+          REMOTE_TIMEOUT_MS,
+          'Timeout na autenticação admin (legado).'
+        );
+      }
+    };
+
     try {
-      const authData = await withTimeout(
-        pb.admins.authWithPassword(email, password),
-        REMOTE_TIMEOUT_MS,
-        'Timeout na autenticação admin.'
-      );
-      return authData;
+      return await tryAuth();
     } catch (error: any) {
       const is403 = error?.status === 403;
       if (is403 && pb.baseUrl !== PB_IP_FALLBACK) {
@@ -291,28 +303,11 @@ export const DataService = {
         resetDnsCache();
         pb.baseUrl = PB_IP_FALLBACK;
         try {
-          const authData = await withTimeout(
-            pb.admins.authWithPassword(email, password),
-            REMOTE_TIMEOUT_MS,
-            'Timeout na autenticação admin (IP direto).'
-          );
-          return authData;
-        } catch {
-          // Falhou admin no IP direto, tenta users
-        }
+          return await tryAuth();
+        } catch {}
       }
-      console.warn('Falha na auth admin, tentando auth user...', error);
-      try {
-        const authData = await withTimeout(
-          pb.collection('users').authWithPassword(email, password),
-          REMOTE_TIMEOUT_MS,
-          'Timeout na autenticação users.'
-        );
-        return authData;
-      } catch (usersError) {
-        console.error('Falha total na autenticação PocketBase:', usersError);
-        throw usersError;
-      }
+      console.error('Falha total na autenticação PocketBase:', error);
+      throw error;
     }
   },
 
