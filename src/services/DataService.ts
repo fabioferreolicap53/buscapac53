@@ -36,7 +36,8 @@ const PB_DOMAIN = import.meta.env.VITE_DB_ADDRESS || 'https://centraldedados.dev
 const PB_IP_FALLBACK = 'https://137.131.183.95';
 const DNS_CHECK_TIMEOUT_MS = 3000;
 
-let dnsResolved: boolean | null = null;
+export let dnsResolved: boolean | null = null;
+export const resetDnsCache = () => { dnsResolved = null; };
 
 export const pb = new PocketBase(PB_DOMAIN);
 
@@ -277,14 +278,29 @@ export const DataService = {
     }
 
     try {
-      // PocketBase < 0.23 usa pb.admins.authWithPassword
       const authData = await withTimeout(
         pb.admins.authWithPassword(email, password),
         REMOTE_TIMEOUT_MS,
         'Timeout na autenticação admin.'
       );
       return authData;
-    } catch (error) {
+    } catch (error: any) {
+      const is403 = error?.status === 403;
+      if (is403 && pb.baseUrl !== PB_IP_FALLBACK) {
+        console.warn('Auth bloqueada (403). Tentando IP direto...');
+        resetDnsCache();
+        pb.baseUrl = PB_IP_FALLBACK;
+        try {
+          const authData = await withTimeout(
+            pb.admins.authWithPassword(email, password),
+            REMOTE_TIMEOUT_MS,
+            'Timeout na autenticação admin (IP direto).'
+          );
+          return authData;
+        } catch {
+          // Falhou admin no IP direto, tenta users
+        }
+      }
       console.warn('Falha na auth admin, tentando auth user...', error);
       try {
         const authData = await withTimeout(
