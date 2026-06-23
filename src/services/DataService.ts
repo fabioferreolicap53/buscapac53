@@ -46,17 +46,19 @@ export const ensureDnsResolves = async (): Promise<void> => {
   try {
     const ctrl = new AbortController();
     const tid = setTimeout(() => ctrl.abort(), DNS_CHECK_TIMEOUT_MS);
-    await fetch(`${PB_DOMAIN}/api/health`, { signal: ctrl.signal });
+    const resp = await fetch(`${PB_DOMAIN}/api/health`, { signal: ctrl.signal });
     clearTimeout(tid);
+    if (!resp.ok) throw new Error(`Status ${resp.status}`);
     dnsResolved = true;
   } catch {
     try {
       const ctrl = new AbortController();
       const tid = setTimeout(() => ctrl.abort(), DNS_CHECK_TIMEOUT_MS);
-      await fetch(`${PB_IP_FALLBACK}/api/health`, { signal: ctrl.signal });
+      const resp = await fetch(`${PB_IP_FALLBACK}/api/health`, { signal: ctrl.signal });
       clearTimeout(tid);
+      if (!resp.ok) throw new Error(`Status ${resp.status}`);
       pb.baseUrl = PB_IP_FALLBACK;
-      console.warn(`DNS falhou. Usando IP direto: ${PB_IP_FALLBACK}`);
+      console.warn(`Domínio inacessível. Usando IP direto: ${PB_IP_FALLBACK}`);
       dnsResolved = true;
     } catch {
       console.error('Domínio e IP direto inacessíveis.');
