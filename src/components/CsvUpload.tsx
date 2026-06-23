@@ -1,7 +1,7 @@
 
 import React, { useRef, useState } from 'react';
 import { Upload, FileText, CheckCircle2, AlertCircle } from 'lucide-react';
-import { DataService, pb } from '../services/DataService';
+import { DataService, pb, ensureDnsResolves } from '../services/DataService';
 import Papa from 'papaparse';
 import { normalizeString } from '../utils/stringUtils';
 
@@ -131,6 +131,7 @@ export default function CsvUpload({ onSuccess }: CsvUploadProps) {
           }
 
           try {
+            await ensureDnsResolves();
             await pb.collection('buscapac53_historico').create({
               date: new Date().toLocaleString(),
               count: totalSaved,

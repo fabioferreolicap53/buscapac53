@@ -29,7 +29,41 @@ export interface TruncateResult {
   removedCount: number;
 }
 
-export const pb = new PocketBase(import.meta.env.VITE_DB_ADDRESS || 'https://centraldedados.dev.br');
+// --- DNS Fallback ---
+// Rede 10.9.187.x não resolve DNS externo → busca falha.
+// Detecta automaticamente e usa IP direto como fallback.
+const PB_DOMAIN = import.meta.env.VITE_DB_ADDRESS || 'https://centraldedados.dev.br';
+const PB_IP_FALLBACK = 'https://137.131.183.95';
+const DNS_CHECK_TIMEOUT_MS = 3000;
+
+let dnsResolved: boolean | null = null;
+
+export const pb = new PocketBase(PB_DOMAIN);
+
+export const ensureDnsResolves = async (): Promise<void> => {
+  if (dnsResolved !== null) return;
+
+  try {
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), DNS_CHECK_TIMEOUT_MS);
+    await fetch(`${PB_DOMAIN}/api/health`, { signal: ctrl.signal });
+    clearTimeout(tid);
+    dnsResolved = true;
+  } catch {
+    try {
+      const ctrl = new AbortController();
+      const tid = setTimeout(() => ctrl.abort(), DNS_CHECK_TIMEOUT_MS);
+      await fetch(`${PB_IP_FALLBACK}/api/health`, { signal: ctrl.signal });
+      clearTimeout(tid);
+      pb.baseUrl = PB_IP_FALLBACK;
+      console.warn(`DNS falhou. Usando IP direto: ${PB_IP_FALLBACK}`);
+      dnsResolved = true;
+    } catch {
+      console.error('Domínio e IP direto inacessíveis.');
+      dnsResolved = true;
+    }
+  }
+};
 const REMOTE_TIMEOUT_MS = 15000; // Aumentado para 15s devido à VM lenta com 1GB RAM
 const REMOTE_NAME_PAGE_SIZE = 200;
 const REMOTE_NAME_STOP_WORDS = new Set(['da', 'de', 'do', 'das', 'dos', 'e']);
@@ -227,6 +261,8 @@ const buildRemoteNameFilter = (query: string): string => {
 export const DataService = {
   // Autenticação com PocketBase
   authenticate: async () => {
+    await ensureDnsResolves();
+
     const email = import.meta.env.VITE_DB_LOGIN;
     const password = import.meta.env.VITE_DB_PASSWORD;
 
