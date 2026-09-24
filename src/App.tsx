@@ -1,9 +1,9 @@
-import { Clock, Sparkles, X, Shield, ArrowRight, Eye, EyeOff } from 'lucide-react';
+import { Clock, Sparkles, X, Shield, ArrowRight, Eye, EyeOff, CalendarDays } from 'lucide-react';
 import React, { useState, useEffect } from 'react';
 import TopNavBar from './components/TopNavBar';
 import SearchModule from './components/SearchModule';
 import SettingsPage from './components/SettingsPage';
-import { DataService } from './services/DataService';
+import { DataService, formatCompetencia } from './services/DataService';
 
 const AUTH_KEY = 'buscapac_auth';
 
@@ -19,12 +19,14 @@ export default function App() {
   const [showLogin, setShowLogin] = useState(false);
   const [loginForm, setLoginForm] = useState({ user: '', pass: '' });
   const [lastUpdate, setLastUpdate] = useState<string | null>(DataService.getLastUpdate());
+  const [competencia, setCompetencia] = useState<string | null>(DataService.getCompetencia());
 
   useEffect(() => {
     if (isAuthenticated) {
       DataService.syncFromRemote().then(result => {
         if (result) {
           setLastUpdate(result.lastUpdate);
+          setCompetencia(result.competencia?.value ?? null);
         }
       });
     }
@@ -289,11 +291,22 @@ export default function App() {
 
               {/* Bottom Status Indicator - Responsive */}
               <div className="mt-12 sm:mt-16 flex flex-col items-center gap-6 w-full">
-                <div className="flex flex-col sm:flex-row items-center gap-3 sm:gap-4 py-2.5 sm:py-2 px-4 sm:px-5 bg-white rounded-2xl sm:rounded-full border border-slate-200 shadow-sm">
-                  <span className="flex h-2 w-2 rounded-full bg-green-500 animate-pulse shrink-0"></span>
-                  <span className="text-[10px] sm:text-xs font-bold text-slate-500 text-center sm:text-left leading-tight">
-                     Conectado ao Banco de Dados Central (FICHA A V2) <span className="hidden sm:inline">•</span> <br className="sm:hidden" /> Tempo de resposta: 42ms
-                   </span>
+                <div className="flex flex-col sm:flex-row flex-wrap items-center justify-center gap-3 sm:gap-4">
+                  <div className="flex flex-col sm:flex-row items-center gap-3 sm:gap-4 py-2.5 sm:py-2 px-4 sm:px-5 bg-white rounded-2xl sm:rounded-full border border-slate-200 shadow-sm">
+                    <span className="flex h-2 w-2 rounded-full bg-green-500 animate-pulse shrink-0"></span>
+                    <span className="text-[10px] sm:text-xs font-bold text-slate-500 text-center sm:text-left leading-tight">
+                       Conectado ao Banco de Dados Central (FICHA A V2) <span className="hidden sm:inline">•</span> <br className="sm:hidden" /> Tempo de resposta: 42ms
+                     </span>
+                  </div>
+
+                  {formatCompetencia(competencia) && (
+                    <div className="flex items-center gap-2.5 py-2.5 px-4 sm:px-5 bg-white rounded-2xl sm:rounded-full border border-slate-200 shadow-sm">
+                      <CalendarDays size={14} className="text-blue-600 shrink-0" />
+                      <span className="text-[10px] sm:text-xs font-black text-slate-500 uppercase tracking-widest">
+                        Competência <span className="text-[#001f3f]">{formatCompetencia(competencia)}</span>
+                      </span>
+                    </div>
+                  )}
                 </div>
                 
                 <footer className="flex flex-col items-center gap-3 w-full px-4 opacity-60 hover:opacity-100 transition-opacity duration-500">

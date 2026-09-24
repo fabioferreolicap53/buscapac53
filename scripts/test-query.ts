@@ -5,7 +5,12 @@ const pb = new PocketBase(process.env.VITE_DB_ADDRESS || 'https://centraldedados
 
 async function testQuery() {
   try {
-    await pb.admins.authWithPassword(process.env.VITE_DB_LOGIN, process.env.VITE_DB_PASSWORD);
+    // PocketBase v0.23+ usa /api/collections/_superusers (a rota /api/admins foi removida).
+    const auth = await pb.send('/api/collections/_superusers/auth-with-password', {
+      method: 'POST',
+      body: { identity: process.env.VITE_DB_LOGIN, password: process.env.VITE_DB_PASSWORD }
+    });
+    pb.authStore.save(auth.token, auth.record);
     
     const tokens = ["FABIO", "FERREIRA", "OLIVEIRA"];
     const first = tokens[0];
@@ -31,9 +36,9 @@ async function testQuery() {
     console.log('Time taken:', Date.now() - start, 'ms');
     
     console.log('Success. Found:', result.items.length);
-  } catch (e) {
-    console.error('Error Status:', e.status);
-    console.error('Error Data:', JSON.stringify(e.response, null, 2));
+  } catch (e: any) {
+    console.error('Error Status:', e?.status);
+    console.error('Error Data:', JSON.stringify(e?.response || e?.message, null, 2));
   }
 }
 testQuery();

@@ -12,6 +12,142 @@ const MAX_FAILURES_BEFORE_ABORT = 20;
 const MAX_FILE_SIZE = 1024 * 1024 * 1024;
 const MAX_FILE_SIZE_LABEL = '1GB';
 
+// Campos da coleção buscapac53_pacientes, na ordem do cabeçalho do CSV.
+// Usada como fallback posicional quando o arquivo não traz linha de cabeçalho.
+const CAMPOS_PACIENTE: string[] = [
+  'NOME_UNIDADE_DE_SAUDE',
+  'NOME_EQUIPE_DE_SAUDE',
+  'CODIGO_MICROAREA',
+  'N_CNS_DA_PESSOA_CADASTRADA',
+  'NOME_DA_PESSOA_CADASTRADA',
+  'NOME_DA_MAE_PESSOA_CADASTRADA',
+  'DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO',
+  'SITUACAO_USUARIO',
+  'SEXO',
+  'DATA_DE_NASCIMENTO',
+  'TIPO_DE_LOGRADOURO',
+  'LOGRADOURO',
+  'CEP_LOGRADOURO',
+  'BAIRRO_DE_MORADIA',
+  'N_CPF',
+];
+
+// Cabeçalhos alternativos aceitos (comparados após normalizeString).
+const ALIASES_CABECALHO: Record<string, string[]> = {
+  NOME_UNIDADE_DE_SAUDE: ['UNIDADE', 'UNIDADE DE SAUDE', 'ESTABELECIMENTO', 'UBS'],
+  NOME_EQUIPE_DE_SAUDE: ['EQUIPE', 'EQUIPE DE SAUDE'],
+  CODIGO_MICROAREA: ['MICROAREA', 'MICRO AREA', 'CODIGO DA MICROAREA'],
+  N_CNS_DA_PESSOA_CADASTRADA: ['CNS', 'CARTAO SUS', 'NUMERO CNS', 'CNS DA PESSOA CADASTRADA'],
+  NOME_DA_PESSOA_CADASTRADA: ['NOME', 'NOME PACIENTE', 'NOME DO PACIENTE', 'PACIENTE', 'NOME COMPLETO'],
+  NOME_DA_MAE_PESSOA_CADASTRADA: ['NOME DA MAE', 'MAE', 'NOME MAE'],
+  DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO: ['DATA ULTIMA ATUALIZACAO', 'ULTIMA ATUALIZACAO', 'ULT ATUALIZACAO'],
+  SITUACAO_USUARIO: ['SITUACAO', 'SITUACAO DO USUARIO'],
+  SEXO: ['SEXO', 'GENERO'],
+  DATA_DE_NASCIMENTO: ['DATA DE NASCIMENTO', 'DATA NASCIMENTO', 'NASCIMENTO', 'NASC'],
+  TIPO_DE_LOGRADOURO: ['TIPO DE LOGRADOURO', 'TIPO LOGRADOURO'],
+  LOGRADOURO: ['LOGRADOURO', 'ENDERECO'],
+  CEP_LOGRADOURO: ['CEP', 'CEP DO LOGRADOURO'],
+  BAIRRO_DE_MORADIA: ['BAIRRO', 'BAIRRO DE MORADIA'],
+  N_CPF: ['CPF', 'CPF DO USUARIO', 'NUMERO DO CPF', 'N_CPF'],
+};
+
+const MIN_CAMPOS_CABECALHO = 8;
+
+const somenteDigitos = (valor: string) => valor.replace(/\D/g, '');
+
+// Converte datas do CSV para DD/MM/AAAA (formato usado na exibição e na ordenação).
+const formatarData = (valor: string): string => {
+  const raw = (valor || '').trim();
+  if (!raw || raw === '--') return '';
+
+  const iso = raw.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+  if (iso) {
+    return `${iso[3].padStart(2, '0')}/${iso[2].padStart(2, '0')}/${iso[1]}`;
+  }
+
+  const br = raw.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})$/);
+  if (br) {
+    const ano = br[3].length === 2 ? `20${br[3]}` : br[3];
+    return `${br[1].padStart(2, '0')}/${br[2].padStart(2, '0')}/${ano}`;
+  }
+
+  const digitos = somenteDigitos(raw);
+  if (digitos.length === 8) {
+    const inicio = digitos.slice(0, 4);
+    if (inicio >= '1900' && inicio <= '2100') {
+      return `${digitos.slice(6, 8)}/${digitos.slice(4, 6)}/${inicio}`;
+    }
+    return `${digitos.slice(0, 2)}/${digitos.slice(2, 4)}/${digitos.slice(4, 8)}`;
+  }
+
+  return '';
+};
+
+const sanitizarValor = (campo: string, valorBruto: string): string => {
+  const valor = String(valorBruto ?? '').trim().replace(/^"|"$/g, '').trim();
+
+  switch (campo) {
+    case 'DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO':
+    case 'DATA_DE_NASCIMENTO':
+      return formatarData(valor);
+    case 'N_CNS_DA_PESSOA_CADASTRADA':
+    case 'CEP_LOGRADOURO':
+      return somenteDigitos(valor);
+    case 'N_CPF': {
+      const digitos = somenteDigitos(valor);
+      return digitos.length === 11 ? digitos : '';
+    }
+    default:
+      return normalizeString(valor);
+  }
+};
+
+// Mapeia cada coluna do cabeçalho para um campo da coleção (null = coluna ignorada).
+const mapearCabecalho = (row: string[]): (string | null)[] => {
+  const cabecalhos = row.map((h) => normalizeString(String(h ?? '')));
+  const mapa: (string | null)[] = cabecalhos.map(() => null);
+
+  cabecalhos.forEach((cabecalho, i) => {
+    if (!cabecalho) return;
+    const campo = CAMPOS_PACIENTE.find((f) => normalizeString(f) === cabecalho);
+    if (campo) mapa[i] = campo;
+  });
+
+  cabecalhos.forEach((cabecalho, i) => {
+    if (!cabecalho || mapa[i]) return;
+
+    for (const campo of CAMPOS_PACIENTE) {
+      if (mapa.includes(campo)) continue;
+
+      const alias = [campo, ...(ALIASES_CABECALHO[campo] || [])].some((candidato) => {
+        const alvo = normalizeString(candidato);
+        return alvo === cabecalho || cabecalho.includes(alvo) || alvo.includes(cabecalho);
+      });
+
+      if (alias) {
+        mapa[i] = campo;
+        return;
+      }
+    }
+  });
+
+  return mapa;
+};
+
+const montarRegistro = (row: string[], colunas: (string | null)[]): Record<string, string> => {
+  const registro: Record<string, string> = {};
+
+  for (let i = 0; i < colunas.length; i++) {
+    const campo = colunas[i];
+    if (!campo || registro[campo] !== undefined) continue;
+
+    const valor = sanitizarValor(campo, row[i]);
+    if (valor !== '') registro[campo] = valor;
+  }
+
+  return registro;
+};
+
 const formatFileSize = (bytes: number) => {
   if (bytes >= 1024 * 1024 * 1024) {
     return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
@@ -53,25 +189,33 @@ export default function CsvUpload({ onSuccess }: CsvUploadProps) {
       setProgressPercent(10);
       await DataService.authenticate();
 
-      // 2. Limpeza via DataService
-      setProgressText('Limpando registros antigos...');
+      // 2. Processamento Chunked com PapaParse
+      setProgressText('Validando arquivo...');
       setProgressPercent(20);
-      const truncateResult = await DataService.truncateCollection();
-      setProgressText(
-        truncateResult.removedCount === -1
-          ? 'Base antiga limpa de uma só vez.'
-          : truncateResult.removedCount === 0
-            ? 'Base antiga já estava vazia.'
-            : `${truncateResult.removedCount.toLocaleString()} registros antigos removidos.`
-      );
-      setProgressPercent(22);
 
-      // 3. Processamento Chunked com PapaParse
-      let totalRead = 0;
       let totalSaved = 0;
       let totalFailed = 0;
+      let cabecalhoLido = false;
+      let colunas: (string | null)[] = CAMPOS_PACIENTE;
+      let baseLimpa = false;
       const uploadBuffer: any[] = [];
       let lastProgressReport = 0;
+
+      // A base antiga só é apagada depois que o início do arquivo é validado.
+      const limparBaseAntiga = async () => {
+        setProgressText('Limpando registros antigos...');
+        const truncateResult = await DataService.truncateCollection();
+        setProgressText(
+          truncateResult.removedCount === -1
+            ? 'Base antiga limpa de uma só vez.'
+            : truncateResult.removedCount === 0
+              ? 'Base antiga já estava vazia.'
+              : `${truncateResult.removedCount.toLocaleString()} registros antigos removidos.`
+        );
+        setProgressPercent(22);
+        baseLimpa = true;
+      };
+
       const flushBatch = async (force: boolean = false) => {
         while (uploadBuffer.length >= UPLOAD_BUFFER_SIZE || (force && uploadBuffer.length > 0)) {
           const nextBatch = uploadBuffer.splice(0, force ? uploadBuffer.length : UPLOAD_BUFFER_SIZE);
@@ -97,19 +241,6 @@ export default function CsvUpload({ onSuccess }: CsvUploadProps) {
             throw new Error('Muitas falhas consecutivas no início do upload. Processo abortado para proteger PocketBase.');
           }
         }
-      };
-
-      const formatDate = (dateStr: string) => {
-        if (!dateStr) return '';
-        if (dateStr.match(/^\d{4}-\d{2}-\d{2}/)) {
-          const p = dateStr.substring(0, 10).split('-');
-          return `${p[2]}/${p[1]}/${p[0]}`;
-        }
-        const parts = dateStr.split('/');
-        if (parts.length === 3) {
-          return `${parts[0].padStart(2, '0')}/${parts[1].padStart(2, '0')}/${parts[2]}`;
-        }
-        return dateStr;
       };
 
       await new Promise<void>((resolve, reject) => {
@@ -158,42 +289,32 @@ export default function CsvUpload({ onSuccess }: CsvUploadProps) {
               const rows = results.data as string[][];
 
               for (const row of rows) {
-                if (totalRead === 0 && row[0]?.toLowerCase().includes('unidade')) {
-                  totalRead++;
+                if (!cabecalhoLido) {
+                  cabecalhoLido = true;
+                  const mapa = mapearCabecalho(row);
+
+                  if (mapa.filter(Boolean).length >= MIN_CAMPOS_CABECALHO) {
+                    colunas = mapa;
+                    continue; // linha de cabeçalho
+                  }
+
+                  colunas = CAMPOS_PACIENTE;
+                }
+
+                const registro = montarRegistro(row, colunas);
+
+                if (!registro.NOME_DA_PESSOA_CADASTRADA && !registro.N_CNS_DA_PESSOA_CADASTRADA) {
                   continue;
                 }
 
-                totalRead++;
+                uploadBuffer.push(registro);
 
-                if (row.length < 14) continue;
-
-                const clean = row.map((val) => {
-                  const raw = (val || '').trim().replace(/^"|"$/g, '').trim();
-                  return normalizeString(raw);
-                });
-
-                if (!clean[3] && !clean[4]) {
-                  continue;
+                // Só apaga a base antiga depois de acumular registros válidos do arquivo.
+                if (!baseLimpa && uploadBuffer.length >= UPLOAD_BUFFER_SIZE) {
+                  await limparBaseAntiga();
                 }
 
-                uploadBuffer.push({
-                  NOME_UNIDADE_DE_SAUDE: clean[0],
-                  NOME_EQUIPE_DE_SAUDE: clean[1],
-                  CODIGO_MICROAREA: clean[2],
-                  N_CNS_DA_PESSOA_CADASTRADA: clean[3],
-                  NOME_DA_PESSOA_CADASTRADA: clean[4],
-                  NOME_DA_MAE_PESSOA_CADASTRADA: clean[5],
-                  DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO: formatDate(clean[6]),
-                  SITUACAO_USUARIO: clean[7],
-                  SEXO: clean[8],
-                  DATA_DE_NASCIMENTO: formatDate(clean[9]),
-                  TIPO_DE_LOGRADOURO: clean[10],
-                  LOGRADOURO: clean[11],
-                  CEP_LOGRADOURO: clean[12],
-                  BAIRRO_DE_MORADIA: clean[13],
-                });
-
-                if (uploadBuffer.length >= UPLOAD_BUFFER_SIZE) {
+                if (baseLimpa && uploadBuffer.length >= UPLOAD_BUFFER_SIZE) {
                   await flushBatch();
                 }
               }
@@ -212,6 +333,14 @@ export default function CsvUpload({ onSuccess }: CsvUploadProps) {
           },
           complete: async () => {
             try {
+              if (!baseLimpa) {
+                if (uploadBuffer.length === 0) {
+                  throw new Error('Nenhum registro válido encontrado no arquivo. A base antiga foi preservada.');
+                }
+
+                await limparBaseAntiga();
+              }
+
               await flushBatch(true);
               await finishWithSuccess();
             } catch (error) {

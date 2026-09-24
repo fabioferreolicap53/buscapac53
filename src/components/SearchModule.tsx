@@ -1,14 +1,46 @@
-import { User, IdCard, UserSearch, ArrowRight, MapPin, Calendar, Heart, Shield, Clock, X, Sparkles, Search, Users, Activity } from 'lucide-react';
+import { User, IdCard, ArrowRight, MapPin, Calendar, Heart, Shield, Clock, X, Search, Users, Activity, Fingerprint, CheckCircle2, AlertTriangle, Copy, Check } from 'lucide-react';
 import { useState } from 'react';
 import { DataService, PatientData } from '../services/DataService';
 import { normalizeString } from '../utils/stringUtils';
 
+type SearchTab = 'name' | 'cns' | 'cpf';
+
+const onlyDigits = (value: string) => (value || '').replace(/\D/g, '');
+
+// Aplica a máscara 000.000.000-00 enquanto o usuário digita.
+const formatCpf = (value: string) => {
+  const digits = onlyDigits(value).slice(0, 11);
+
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 6) return `${digits.slice(0, 3)}.${digits.slice(3)}`;
+  if (digits.length <= 9) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`;
+  return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
+};
+
+// Valida os dois dígitos verificadores do CPF.
+const isValidCpf = (value: string) => {
+  const digits = onlyDigits(value);
+  if (digits.length !== 11 || /^(\d)\1{10}$/.test(digits)) return false;
+
+  const checkDigit = (length: number) => {
+    let sum = 0;
+    for (let i = 0; i < length; i++) {
+      sum += parseInt(digits[i], 10) * (length + 1 - i);
+    }
+    const rest = (sum * 10) % 11;
+    return rest === 10 ? 0 : rest;
+  };
+
+  return checkDigit(9) === parseInt(digits[9], 10) && checkDigit(10) === parseInt(digits[10], 10);
+};
+
 export default function SearchModule() {
-  const [activeTab, setActiveTab] = useState<'name' | 'cns'>('name');
+  const [activeTab, setActiveTab] = useState<SearchTab>('name');
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<PatientData[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   const getPatientKey = (patient: PatientData) => {
     return patient.id || patient.N_CNS_DA_PESSOA_CADASTRADA || `${patient.NOME_DA_PESSOA_CADASTRADA}-${patient.DATA_DE_NASCIMENTO}`;
@@ -65,11 +97,17 @@ export default function SearchModule() {
     });
   };
 
-  const filterPatientsByQuery = (patients: PatientData[], searchTerm: string, searchType: 'name' | 'cns') => {
+  const filterPatientsByQuery = (patients: PatientData[], searchTerm: string, searchType: SearchTab) => {
     const normalizedSearch = normalizeString(searchTerm);
 
+    if (searchType === 'cpf') {
+      const digits = onlyDigits(searchTerm);
+      if (!digits) return [];
+      return patients.filter((patient) => onlyDigits(patient.N_CPF || '').includes(digits));
+    }
+
     if (searchType === 'cns') {
-      return patients.filter(patient => patient.N_CNS_DA_PESSOA_CADASTRADA.includes(searchTerm.trim()));
+      return patients.filter((patient) => (patient.N_CNS_DA_PESSOA_CADASTRADA || '').includes(searchTerm.trim()));
     }
 
     // Busca inteligente por tokens
@@ -113,14 +151,31 @@ export default function SearchModule() {
     }
   };
 
+  const handleCopyCpf = async (patient: PatientData) => {
+    const digits = onlyDigits(patient.N_CPF || '');
+    if (!digits) return;
+
+    try {
+      await navigator.clipboard.writeText(formatCpf(digits));
+      setCopiedKey(getPatientKey(patient));
+      window.setTimeout(() => setCopiedKey(null), 1600);
+    } catch (error) {
+      console.warn('Não foi possível copiar o CPF.', error);
+    }
+  };
+
+  const cpfDigits = onlyDigits(query);
+  const cpfComplete = activeTab === 'cpf' && cpfDigits.length === 11;
+  const cpfValid = cpfComplete && isValidCpf(cpfDigits);
+
   return (
     <div className="w-full max-w-4xl mx-auto px-2 sm:px-0">
       {/* Tabs / Search Header */}
       <div className="flex flex-col sm:flex-row items-center justify-between mb-6 sm:mb-8 gap-4">
         <div className="flex bg-slate-100 p-1 rounded-2xl w-full sm:w-auto">
           <button
-            onClick={() => setActiveTab('name')}
-            className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-xs font-black tracking-widest transition-all duration-300 ${
+            onClick={() => { setActiveTab('name'); setQuery(''); }}
+            className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black tracking-widest transition-all duration-300 ${
               activeTab === 'name' 
                 ? 'bg-white text-blue-600 shadow-sm ring-1 ring-slate-200' 
                 : 'text-slate-500 hover:text-slate-700'
@@ -130,8 +185,8 @@ export default function SearchModule() {
             NOME
           </button>
           <button
-            onClick={() => setActiveTab('cns')}
-            className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-xs font-black tracking-widest transition-all duration-300 ${
+            onClick={() => { setActiveTab('cns'); setQuery(''); }}
+            className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black tracking-widest transition-all duration-300 ${
               activeTab === 'cns' 
                 ? 'bg-white text-blue-600 shadow-sm ring-1 ring-slate-200' 
                 : 'text-slate-500 hover:text-slate-700'
@@ -139,6 +194,17 @@ export default function SearchModule() {
           >
             <IdCard size={14} strokeWidth={3} />
             CNS
+          </button>
+          <button
+            onClick={() => { setActiveTab('cpf'); setQuery(''); }}
+            className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black tracking-widest transition-all duration-300 ${
+              activeTab === 'cpf' 
+                ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-900/20' 
+                : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            <Fingerprint size={14} strokeWidth={3} />
+            CPF
           </button>
         </div>
       </div>
@@ -151,12 +217,35 @@ export default function SearchModule() {
             <Search className="text-slate-400 shrink-0" size={20} strokeWidth={2.5} />
             <input
               type="text"
+              inputMode={activeTab === 'cpf' ? 'numeric' : 'text'}
               value={query}
-              onChange={(e) => setQuery(e.target.value.toUpperCase())}
+              onChange={(e) => setQuery(activeTab === 'cpf' ? formatCpf(e.target.value) : e.target.value.toUpperCase())}
               onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-              placeholder={activeTab === 'name' ? "DIGITE O NOME DO PACIENTE..." : "DIGITE O NÚMERO DO CNS..."}
-              className="w-full bg-transparent border-none focus:ring-0 focus:outline-none outline-none text-slate-800 placeholder:text-slate-300 font-black text-sm sm:text-base tracking-tight uppercase"
+              placeholder={
+                activeTab === 'name'
+                  ? "DIGITE O NOME DO PACIENTE..."
+                  : activeTab === 'cns'
+                    ? "DIGITE O NÚMERO DO CNS..."
+                    : "DIGITE O CPF (000.000.000-00)..."
+              }
+              className="w-full bg-transparent border-none focus:ring-0 focus:outline-none outline-none text-slate-800 placeholder:text-slate-300 font-black text-sm sm:text-base tracking-tight uppercase tabular-nums"
             />
+
+            {cpfComplete && (
+              <div
+                className={`hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full border shrink-0 ${
+                  cpfValid
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                    : 'bg-amber-50 border-amber-200 text-amber-700'
+                }`}
+              >
+                {cpfValid ? <CheckCircle2 size={12} strokeWidth={3} /> : <AlertTriangle size={12} strokeWidth={3} />}
+                <span className="text-[9px] font-black tracking-widest uppercase">
+                  {cpfValid ? 'CPF válido' : 'Dígitos não conferem'}
+                </span>
+              </div>
+            )}
+
             {query && (
               <button 
                 onClick={() => setQuery('')}
@@ -263,11 +352,38 @@ export default function SearchModule() {
                       </div>
 
                       <div className="flex items-center sm:pl-6 sm:border-l border-slate-100">
-                        <div className="flex flex-col items-start sm:items-end w-full sm:w-auto">
-                          <span className="text-[8px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">CARTÃO NACIONAL</span>
-                          <div className="flex items-center gap-2.5 bg-slate-50 px-3 py-2 rounded-xl border border-slate-200">
-                            <IdCard size={14} className="text-blue-500" />
-                            <span className="text-xs sm:text-sm font-black text-slate-700 tracking-widest tabular-nums">{patient.N_CNS_DA_PESSOA_CADASTRADA}</span>
+                        <div className="flex flex-col gap-3 items-start sm:items-end w-full sm:w-auto">
+                          <div className="flex flex-col items-start sm:items-end w-full sm:w-auto">
+                            <span className="text-[8px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1.5">CARTÃO NACIONAL</span>
+                            <div className="flex items-center gap-2.5 bg-slate-50 px-3 py-2 rounded-xl border border-slate-200">
+                              <IdCard size={14} className="text-blue-500" />
+                              <span className="text-xs sm:text-sm font-black text-slate-700 tracking-widest tabular-nums">{patient.N_CNS_DA_PESSOA_CADASTRADA}</span>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-col items-start sm:items-end w-full sm:w-auto">
+                            <span className="text-[8px] font-black text-indigo-400 uppercase tracking-[0.2em] mb-1.5">CPF</span>
+                            <div className={`flex items-center gap-2 pl-3 pr-1.5 py-1.5 rounded-xl border transition-colors ${
+                              patient.N_CPF
+                                ? `bg-indigo-50/60 border-indigo-100 ${activeTab === 'cpf' ? 'ring-2 ring-indigo-200' : ''}`
+                                : 'bg-slate-50 border-slate-200'
+                            }`}>
+                              <Fingerprint size={14} className={patient.N_CPF ? 'text-indigo-500' : 'text-slate-300'} />
+                              <span className={`text-xs sm:text-sm font-black tracking-widest tabular-nums ${patient.N_CPF ? 'text-slate-800' : 'text-slate-300'}`}>
+                                {patient.N_CPF ? formatCpf(patient.N_CPF) : '—'}
+                              </span>
+                              {patient.N_CPF && (
+                                <button
+                                  onClick={() => handleCopyCpf(patient)}
+                                  title="Copiar CPF"
+                                  className="p-1.5 rounded-lg text-indigo-500 hover:bg-indigo-100 transition-colors"
+                                >
+                                  {copiedKey === getPatientKey(patient)
+                                    ? <Check size={13} strokeWidth={3} />
+                                    : <Copy size={13} strokeWidth={2.5} />}
+                                </button>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </div>
