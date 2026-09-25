@@ -148,6 +148,40 @@ const montarRegistro = (row: string[], colunas: (string | null)[]): Record<strin
   return registro;
 };
 
+// Conta as linhas de dados do CSV (ignora cabeçalho e linhas vazias).
+// É uma leitura prévia do arquivo para que o percentual de progresso reflita
+// a quantidade real de registros importados, e não os bytes lidos.
+const contarRegistros = (file: File, onProgress?: (linhas: number) => void): Promise<number> => {
+  return new Promise((resolve) => {
+    let linhas = 0;
+    let cabecalhoLido = false;
+
+    Papa.parse(file, {
+      header: false,
+      skipEmptyLines: 'greedy',
+      worker: false,
+      encoding: 'CP1252',
+      chunkSize: PARSE_CHUNK_SIZE,
+      chunk: (results) => {
+        for (const row of results.data as string[][]) {
+          if (!cabecalhoLido) {
+            cabecalhoLido = true;
+            if (mapearCabecalho(row).filter(Boolean).length >= MIN_CAMPOS_CABECALHO) {
+              continue; // linha de cabeçalho
+            }
+          }
+
+          if (row && row.length > 0) linhas++;
+        }
+
+        if (onProgress) onProgress(linhas);
+      },
+      complete: () => resolve(linhas),
+      error: () => resolve(linhas)
+    });
+  });
+};
+
 const formatFileSize = (bytes: number) => {
   if (bytes >= 1024 * 1024 * 1024) {
     return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
@@ -167,6 +201,10 @@ export default function CsvUpload({ onSuccess }: CsvUploadProps) {
   const [progressPercent, setProgressPercent] = useState(0);
   const [totalFileSize, setTotalFileSize] = useState(0);
   const [bytesProcessed, setBytesProcessed] = useState(0);
+  const [totalRows, setTotalRows] = useState(0);
+  const [processedRows, setProcessedRows] = useState(0);
+  const [savedRows, setSavedRows] = useState(0);
+  const [failedRows, setFailedRows] = useState(0);
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -182,16 +220,35 @@ export default function CsvUpload({ onSuccess }: CsvUploadProps) {
     setProgressPercent(0);
     setTotalFileSize(file.size);
     setBytesProcessed(0);
+    setTotalRows(0);
+    setProcessedRows(0);
+    setSavedRows(0);
+    setFailedRows(0);
 
     try {
       // 1. Auth
       setProgressText('Autenticando...');
-      setProgressPercent(10);
+      setProgressPercent(4);
       await DataService.authenticate();
 
-      // 2. Processamento Chunked com PapaParse
+      // 2. Leitura prévia do arquivo: descobre o total de registros para que o
+      //    percentual reflita a quantidade importada, e não os bytes lidos.
+      setProgressText('Contando registros do arquivo...');
+      setProgressPercent(6);
+
+      let totalRowsArquivo = 0;
+      try {
+        totalRowsArquivo = await contarRegistros(file, (linhas) => {
+          setProgressText(`Contando registros... ${linhas.toLocaleString()}`);
+        });
+      } catch (contagemError) {
+        console.error('Falha ao contar registros:', contagemError);
+      }
+
+      // 3. Processamento Chunked com PapaParse
+      setTotalRows(totalRowsArquivo);
       setProgressText('Validando arquivo...');
-      setProgressPercent(20);
+      setProgressPercent(8);
 
       let totalSaved = 0;
       let totalFailed = 0;
@@ -212,7 +269,6 @@ export default function CsvUpload({ onSuccess }: CsvUploadProps) {
               ? 'Base antiga já estava vazia.'
               : `${truncateResult.removedCount.toLocaleString()} registros antigos removidos.`
         );
-        setProgressPercent(22);
         baseLimpa = true;
       };
 
@@ -231,10 +287,23 @@ export default function CsvUpload({ onSuccess }: CsvUploadProps) {
             }
           }
 
-          const processedRows = totalSaved + totalFailed;
-          if (processedRows - lastProgressReport >= PROGRESS_REPORT_STEP || totalFailed > 0 || force) {
-            lastProgressReport = processedRows;
-            setProgressText(`${totalSaved} salvos • ${totalFailed} falhas`);
+          const processados = totalSaved + totalFailed;
+          setProcessedRows(processados);
+          setSavedRows(totalSaved);
+          setFailedRows(totalFailed);
+
+          // Percentual real da importação: preparação (8%) + registros processados (91%).
+          if (totalRowsArquivo > 0) {
+            setProgressPercent(Math.min(99, 8 + Math.floor((processados / totalRowsArquivo) * 91)));
+          }
+
+          if (processados - lastProgressReport >= PROGRESS_REPORT_STEP || totalFailed > 0 || force) {
+            lastProgressReport = processados;
+            setProgressText(
+              totalRowsArquivo > 0
+                ? `Importando ${processados.toLocaleString()} de ${totalRowsArquivo.toLocaleString()} registros`
+                : `${totalSaved.toLocaleString()} salvos • ${totalFailed} falhas`
+            );
           }
 
           if (totalSaved === 0 && totalFailed >= MAX_FAILURES_BEFORE_ABORT) {
@@ -321,9 +390,13 @@ export default function CsvUpload({ onSuccess }: CsvUploadProps) {
 
               const newBytesProcessed = Math.min((results.meta as any)?.cursor || totalFileSize, totalFileSize);
               setBytesProcessed(newBytesProcessed);
-              const parsePercent = totalFileSize > 0 ? newBytesProcessed / totalFileSize : 0;
-              const newPercent = Math.min(20 + Math.floor(parsePercent * 75), 99);
-              setProgressPercent(newPercent);
+
+              // Sem a contagem prévia (arquivo ilegível para contagem), cai para
+              // o progresso baseado nos bytes já lidos.
+              if (totalRowsArquivo === 0) {
+                const parsePercent = totalFileSize > 0 ? newBytesProcessed / totalFileSize : 0;
+                setProgressPercent(Math.min(99, 8 + Math.floor(parsePercent * 91)));
+              }
 
               parser.resume();
             } catch (error) {
@@ -354,7 +427,10 @@ export default function CsvUpload({ onSuccess }: CsvUploadProps) {
       });
 
       setProgressPercent(100);
-      setProgressText(`Concluído! ${totalSaved} salvos • ${totalFailed} falhas`);
+      setProcessedRows(totalSaved + totalFailed);
+      setSavedRows(totalSaved);
+      setFailedRows(totalFailed);
+      setProgressText(`Concluído! ${totalSaved.toLocaleString()} salvos • ${totalFailed} falhas`);
       setStatus('success');
       setTimeout(() => window.location.reload(), 3000);
 
@@ -392,13 +468,18 @@ export default function CsvUpload({ onSuccess }: CsvUploadProps) {
 
       {status === 'uploading' && (
         <div className="flex flex-col items-center gap-4 w-full px-4">
-          <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center shadow-sm animate-pulse">
+          <div className="relative w-16 h-16 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center shadow-sm">
             <FileText size={28} strokeWidth={2.5} />
+            <span className="absolute -bottom-2 -right-2 bg-[#001f3f] text-white text-[10px] font-black px-2 py-0.5 rounded-full tabular-nums shadow-sm">
+              {progressPercent}%
+            </span>
           </div>
+
           <div className="w-full text-center space-y-3">
             <p className="text-[11px] font-black text-blue-600 tracking-widest uppercase animate-pulse">
               {progressText}
             </p>
+
             <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden relative">
               <div 
                 className="bg-blue-600 h-2.5 rounded-full transition-all duration-500 ease-out relative"
@@ -407,9 +488,31 @@ export default function CsvUpload({ onSuccess }: CsvUploadProps) {
                 <div className="absolute top-0 left-0 w-full h-full bg-white/20 animate-[shimmer_2s_infinite]" />
               </div>
             </div>
-            <div className="flex items-center justify-between gap-3 text-xs font-bold text-slate-500">
-              <span>{formatFileSize(bytesProcessed)} / {formatFileSize(totalFileSize || 0)}</span>
-              <span>{progressPercent}%</span>
+
+            <div className="grid grid-cols-3 gap-2">
+              <div className="bg-slate-50 border border-slate-100 rounded-xl px-2 py-2">
+                <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Enviados</p>
+                <p className="text-sm font-black text-[#001f3f] tabular-nums">{savedRows.toLocaleString()}</p>
+              </div>
+              <div className="bg-slate-50 border border-slate-100 rounded-xl px-2 py-2">
+                <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Falhas</p>
+                <p className={`text-sm font-black tabular-nums ${failedRows > 0 ? 'text-rose-600' : 'text-slate-300'}`}>
+                  {failedRows.toLocaleString()}
+                </p>
+              </div>
+              <div className="bg-slate-50 border border-slate-100 rounded-xl px-2 py-2">
+                <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Total</p>
+                <p className="text-sm font-black text-slate-500 tabular-nums">{totalRows.toLocaleString()}</p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-3 text-[10px] font-bold text-slate-400">
+              <span className="tabular-nums">
+                {totalRows > 0
+                  ? `${processedRows.toLocaleString()} de ${totalRows.toLocaleString()} registros`
+                  : `${processedRows.toLocaleString()} registros processados`}
+              </span>
+              <span className="tabular-nums">{formatFileSize(bytesProcessed)} / {formatFileSize(totalFileSize || 0)}</span>
             </div>
           </div>
         </div>

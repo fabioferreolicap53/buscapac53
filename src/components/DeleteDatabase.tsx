@@ -20,6 +20,8 @@ interface DeleteSummary {
 }
 
 const CONFIRMATION_PHRASE = 'EXCLUIR BASE';
+// Senha de autorização da exclusão (barreira extra na UI, além da frase).
+const DELETE_PASSWORD = '@Cap5364125';
 // Trégua curta entre lotes para o servidor respirar (mesma ideia da importação).
 const LOT_COOLDOWN_MS = 150;
 const PAUSE_POLL_MS = 200;
@@ -55,6 +57,7 @@ export default function DeleteDatabase({ onSuccess }: DeleteDatabaseProps) {
   const [stage, setStage] = useState<DeleteStage>('auth');
   const [control, setControl] = useState<DeleteControl>('running');
   const [phrase, setPhrase] = useState('');
+  const [password, setPassword] = useState('');
   const [progress, setProgress] = useState({ removed: 0, total: 0, errors: 0 });
   const [eta, setEta] = useState('—');
   const [tick, setTick] = useState(0);
@@ -132,6 +135,7 @@ export default function DeleteDatabase({ onSuccess }: DeleteDatabaseProps) {
     setStage('auth');
     setControl('running');
     setPhrase('');
+    setPassword('');
     setSummary(null);
     setErrorMessage('');
     setEta('—');
@@ -313,6 +317,9 @@ export default function DeleteDatabase({ onSuccess }: DeleteDatabaseProps) {
   };
 
   const phraseMatches = phrase.trim().toUpperCase() === CONFIRMATION_PHRASE;
+  const passwordMatches = password === DELETE_PASSWORD;
+  // A exclusão só pode começar com a frase de confirmação E a senha correta.
+  const canConfirm = phraseMatches && passwordMatches;
 
   // Bloco único de "quantidade atual da coleção" (inicial, resumo e erro).
   const countBlock = (
@@ -547,26 +554,51 @@ export default function DeleteDatabase({ onSuccess }: DeleteDatabaseProps) {
             <p className="text-xs text-slate-600 leading-relaxed mb-6">
               Isso apaga <strong>todos os registros</strong> da coleção de pacientes de forma permanente.
               Não há como desfazer. Para liberar, digite
-              <strong className="text-rose-600"> {CONFIRMATION_PHRASE}</strong>.
+              <strong className="text-rose-600"> {CONFIRMATION_PHRASE}</strong> e informe a
+              <strong className="text-rose-600"> senha de autorização</strong>.
             </p>
 
+            <label className="block text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">
+              Frase de confirmação
+            </label>
             <input
               autoFocus
               type="text"
               value={phrase}
               onChange={(e) => setPhrase(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && phraseMatches) runDeletion();
-              }}
               placeholder={CONFIRMATION_PHRASE}
-              className="w-full px-4 py-3 rounded-2xl border border-slate-200 bg-slate-50 text-sm font-black tracking-widest text-slate-900 uppercase placeholder:text-slate-300 focus:outline-none focus:border-rose-400 mb-6"
+              className="w-full px-4 py-3 rounded-2xl border border-slate-200 bg-slate-50 text-sm font-black tracking-widest text-slate-900 uppercase placeholder:text-slate-300 focus:outline-none focus:border-rose-400 mb-4"
             />
+
+            <label className="block text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">
+              Senha de autorização
+            </label>
+            <input
+              type="password"
+              value={password}
+              autoComplete="off"
+              onChange={(e) => setPassword(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && canConfirm) runDeletion();
+              }}
+              placeholder="••••••••••"
+              className={`w-full px-4 py-3 rounded-2xl border bg-slate-50 text-sm font-black tracking-widest text-slate-900 placeholder:text-slate-300 focus:outline-none mb-2 ${
+                password.length > 0 && !passwordMatches
+                  ? 'border-rose-300 focus:border-rose-400'
+                  : 'border-slate-200 focus:border-rose-400'
+              }`}
+            />
+
+            <p className={`text-[10px] font-bold mb-6 h-4 ${password.length > 0 && !passwordMatches ? 'text-rose-500' : 'text-transparent'}`}>
+              Senha incorreta.
+            </p>
 
             <div className="flex gap-3">
               <button
                 onClick={() => {
                   setStatus('idle');
                   setPhrase('');
+                  setPassword('');
                 }}
                 className="flex-1 py-3 rounded-2xl bg-slate-100 text-slate-700 font-black text-[11px] uppercase tracking-widest hover:bg-slate-200 transition-colors"
               >
@@ -574,7 +606,7 @@ export default function DeleteDatabase({ onSuccess }: DeleteDatabaseProps) {
               </button>
               <button
                 onClick={runDeletion}
-                disabled={!phraseMatches}
+                disabled={!canConfirm}
                 className="flex-1 py-3 rounded-2xl bg-rose-600 text-white font-black text-[11px] uppercase tracking-widest hover:bg-rose-700 transition-colors disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed"
               >
                 Excluir tudo
