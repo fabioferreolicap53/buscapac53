@@ -352,31 +352,39 @@ export default function SearchModule() {
                       </div>
 
                       <div className="flex items-center sm:pl-6 sm:border-l border-slate-100">
-                        <div className="flex flex-col gap-3 items-start sm:items-end w-full sm:w-auto">
-                          <div className="flex flex-col items-start sm:items-end w-full sm:w-auto">
-                            <span className="text-[8px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1.5">CARTÃO NACIONAL</span>
-                            <div className="flex items-center gap-2.5 bg-slate-50 px-3 py-2 rounded-xl border border-slate-200">
-                              <IdCard size={14} className="text-blue-500" />
-                              <span className="text-xs sm:text-sm font-black text-slate-700 tracking-widest tabular-nums">{patient.N_CNS_DA_PESSOA_CADASTRADA}</span>
+                        <div className="flex flex-col gap-3 w-full sm:w-[250px]">
+                          <div className="flex flex-col items-start sm:items-end gap-1.5 w-full">
+                            <span className="text-[8px] font-black text-slate-400 uppercase tracking-[0.2em]">Cartão Nacional</span>
+                            <div className="w-full h-11 flex items-center gap-2.5 pl-2.5 pr-3 bg-gradient-to-r from-blue-50/80 to-slate-50 border border-blue-100 rounded-2xl">
+                              <span className="w-6 h-6 rounded-lg bg-white border border-blue-100 text-blue-600 flex items-center justify-center shrink-0 shadow-sm">
+                                <IdCard size={13} />
+                              </span>
+                              <span className="text-sm font-black text-slate-700 tracking-[0.1em] tabular-nums truncate">
+                                {patient.N_CNS_DA_PESSOA_CADASTRADA || '—'}
+                              </span>
                             </div>
                           </div>
 
-                          <div className="flex flex-col items-start sm:items-end w-full sm:w-auto">
-                            <span className="text-[8px] font-black text-indigo-400 uppercase tracking-[0.2em] mb-1.5">CPF</span>
-                            <div className={`flex items-center gap-2 pl-3 pr-1.5 py-1.5 rounded-xl border transition-colors ${
+                          <div className="flex flex-col items-start sm:items-end gap-1.5 w-full">
+                            <span className="text-[8px] font-black text-slate-400 uppercase tracking-[0.2em]">CPF</span>
+                            <div className={`w-full h-11 flex items-center gap-2.5 pl-2.5 pr-1.5 rounded-2xl border transition-colors ${
                               patient.N_CPF
-                                ? `bg-indigo-50/60 border-indigo-100 ${activeTab === 'cpf' ? 'ring-2 ring-indigo-200' : ''}`
+                                ? `bg-gradient-to-r from-indigo-50/80 to-slate-50 border-indigo-100 ${activeTab === 'cpf' ? 'ring-2 ring-indigo-200' : ''}`
                                 : 'bg-slate-50 border-slate-200'
                             }`}>
-                              <Fingerprint size={14} className={patient.N_CPF ? 'text-indigo-500' : 'text-slate-300'} />
-                              <span className={`text-xs sm:text-sm font-black tracking-widest tabular-nums ${patient.N_CPF ? 'text-slate-800' : 'text-slate-300'}`}>
+                              <span className={`w-6 h-6 rounded-lg bg-white border flex items-center justify-center shrink-0 shadow-sm ${
+                                patient.N_CPF ? 'border-indigo-100 text-indigo-500' : 'border-slate-100 text-slate-300'
+                              }`}>
+                                <Fingerprint size={13} />
+                              </span>
+                              <span className={`flex-1 text-sm font-black tracking-[0.1em] tabular-nums ${patient.N_CPF ? 'text-slate-700' : 'text-slate-300'}`}>
                                 {patient.N_CPF ? formatCpf(patient.N_CPF) : '—'}
                               </span>
                               {patient.N_CPF && (
                                 <button
                                   onClick={() => handleCopyCpf(patient)}
                                   title="Copiar CPF"
-                                  className="p-1.5 rounded-lg text-indigo-500 hover:bg-indigo-100 transition-colors"
+                                  className="w-8 h-8 flex items-center justify-center rounded-xl text-indigo-500 hover:bg-indigo-100 transition-colors shrink-0"
                                 >
                                   {copiedKey === getPatientKey(patient)
                                     ? <Check size={13} strokeWidth={3} />
