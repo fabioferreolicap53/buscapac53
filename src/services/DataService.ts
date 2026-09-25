@@ -21,6 +21,8 @@ export interface PatientData {
 }
 
 export interface UploadHistory {
+  /** Id do registro na coleção buscapac53_historico (ausente em cache antigo). */
+  id?: string;
   date: string;
   count: number;
   fileName: string;
@@ -130,6 +132,7 @@ export const DELETE_LOT_SIZE = 100;
 const STORAGE_KEY = 'buscapac_db';
 const UPDATE_KEY = 'buscapac_last_update';
 const HISTORY_KEY = 'buscapac_upload_history';
+const HISTORY_COLLECTION = 'buscapac53_historico';
 
 // --- Competência da base importada ---
 // Fica no PocketBase (coleção própria, 1 registro com id fixo) para que todos
@@ -576,18 +579,39 @@ export const DataService = {
     return history ? JSON.parse(history) : [];
   },
 
+  // Exclui um registro individual do histórico de importação.
+  deleteHistoryRecord: async (id: string): Promise<void> => {
+    await DataService.authenticate();
+
+    await withTimeout(
+      pb.collection(HISTORY_COLLECTION).delete(id, { $autoCancel: false, requestKey: null }),
+      DELETE_REQUEST_TIMEOUT_MS,
+      'Timeout ao excluir o registro do histórico.'
+    );
+
+    // Mantém o cache local coerente mesmo que a próxima sincronização falhe.
+    const remaining = DataService.getHistory().filter((item) => item.id !== id);
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(remaining));
+    if (remaining.length > 0) {
+      localStorage.setItem(UPDATE_KEY, remaining[0].date);
+    } else {
+      localStorage.removeItem(UPDATE_KEY);
+    }
+  },
+
   syncFromRemote: async () => {
     try {
       await DataService.authenticate();
       
       // 1. Buscar histórico do PocketBase
-      const historyRecords = await pb.collection('buscapac53_historico').getList(1, 3, {
+      const historyRecords = await pb.collection(HISTORY_COLLECTION).getList(1, 3, {
         sort: '-created',
         $autoCancel: false,
         requestKey: null
       });
       
       const history: UploadHistory[] = historyRecords.items.map(item => ({
+        id: item.id,
         date: item.date,
         count: item.count,
         fileName: item.fileName

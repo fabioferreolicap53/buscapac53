@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Database, Clock, ArrowLeft, ShieldCheck, History, Info, CalendarDays } from 'lucide-react';
+import { Database, Clock, ArrowLeft, ShieldCheck, History, Info, CalendarDays, Trash2, Loader2 } from 'lucide-react';
 import { DataService, UploadHistory, formatCompetencia } from '../services/DataService';
 import CsvUpload from './CsvUpload';
 import DeleteDatabase from './DeleteDatabase';
@@ -20,6 +20,11 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
   const [savingCompetencia, setSavingCompetencia] = useState(false);
   const [competenciaFeedback, setCompetenciaFeedback] = useState<{ ok: boolean; text: string } | null>(null);
 
+  // Exclusão individual de registros do histórico de importação.
+  const [confirmingHistoryId, setConfirmingHistoryId] = useState<string | null>(null);
+  const [deletingHistoryId, setDeletingHistoryId] = useState<string | null>(null);
+  const [historyFeedback, setHistoryFeedback] = useState<{ ok: boolean; text: string } | null>(null);
+
   const syncData = async () => {
     setLoading(true);
     const result = await DataService.syncFromRemote();
@@ -34,6 +39,27 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
       setCompetenciaInput(prev => prev || value || '');
     }
     setLoading(false);
+  };
+
+  const handleDeleteHistory = async (id: string) => {
+    setDeletingHistoryId(id);
+    setHistoryFeedback(null);
+
+    try {
+      await DataService.deleteHistoryRecord(id);
+      // Remove da tela na hora; a sincronização abaixo confirma com o servidor.
+      setHistory(prev => prev.filter(item => item.id !== id));
+      setConfirmingHistoryId(null);
+      await syncData();
+      setHistoryFeedback({ ok: true, text: 'Registro de importação excluído.' });
+    } catch (error) {
+      setHistoryFeedback({
+        ok: false,
+        text: error instanceof Error ? error.message : 'Falha ao excluir o registro.'
+      });
+    } finally {
+      setDeletingHistoryId(null);
+    }
   };
 
   useEffect(() => {
@@ -205,8 +231,13 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
                   <p className="text-xs text-slate-400 animate-pulse font-bold">Buscando histórico...</p>
                 </div>
               ) : history.length > 0 ? (
-                history.slice(0, 3).map((item, i) => (
-                  <div key={i} className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex flex-col gap-3 group hover:border-blue-200 transition-colors">
+                history.slice(0, 3).map((item) => (
+                  <div
+                    key={item.id ?? `${item.fileName}-${item.date}`}
+                    className={`bg-slate-50 p-4 rounded-2xl border flex flex-col gap-3 transition-colors ${
+                      confirmingHistoryId === item.id ? 'border-rose-200' : 'border-slate-100 hover:border-blue-200'
+                    }`}
+                  >
                     <div className="flex items-center justify-between">
                       <div className="flex flex-col">
                         <span className="text-[8px] font-black text-blue-500 uppercase tracking-widest leading-none mb-1">Mês do Upload</span>
@@ -219,7 +250,23 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
                           })()}
                         </p>
                       </div>
-                      <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded border border-green-200 font-black tracking-widest">OK</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded border border-green-200 font-black tracking-widest">OK</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setHistoryFeedback(null);
+                            setConfirmingHistoryId(prev => (prev === item.id ? null : item.id ?? null));
+                          }}
+                          disabled={!item.id || deletingHistoryId === item.id}
+                          title={item.id ? 'Excluir este registro de importação' : 'Sincronize para poder excluir'}
+                          className="p-1.5 rounded-lg text-slate-300 hover:text-rose-600 hover:bg-rose-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          {deletingHistoryId === item.id
+                            ? <Loader2 size={13} className="animate-spin" />
+                            : <Trash2 size={13} />}
+                        </button>
+                      </div>
                     </div>
 
                     <div className="h-[1px] w-full bg-slate-200/50" />
@@ -234,12 +281,42 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
                         SINCRO EM {item.date}
                       </div>
                     </div>
+
+                    {confirmingHistoryId === item.id && item.id && (
+                      <div className="flex items-center justify-between gap-3 bg-rose-50 border border-rose-100 rounded-xl px-3 py-2">
+                        <p className="text-[9px] font-black text-rose-600 uppercase tracking-widest">Excluir registro?</p>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setConfirmingHistoryId(null)}
+                            disabled={deletingHistoryId === item.id}
+                            className="px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 text-[9px] font-black uppercase tracking-widest hover:bg-slate-50 transition-colors disabled:opacity-50"
+                          >
+                            Cancelar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteHistory(item.id as string)}
+                            disabled={deletingHistoryId === item.id}
+                            className="px-3 py-1.5 rounded-lg bg-rose-600 text-white text-[9px] font-black uppercase tracking-widest hover:bg-rose-700 transition-colors disabled:opacity-50"
+                          >
+                            {deletingHistoryId === item.id ? 'Excluindo...' : 'Excluir'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))
               ) : (
                 <div className="py-10 text-center">
                   <p className="text-xs text-slate-300 font-bold italic">Nenhum histórico disponível</p>
                 </div>
+              )}
+
+              {historyFeedback && (
+                <p className={`text-xs font-bold ${historyFeedback.ok ? 'text-green-600' : 'text-red-600'}`}>
+                  {historyFeedback.text}
+                </p>
               )}
             </div>
           </div>
@@ -265,15 +342,36 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
                 <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold shrink-0">2</div>
                 <div>
                   <p className="text-sm text-slate-600 leading-relaxed mb-3">
-                    As colunas devem seguir obrigatoriamente esta ordem (15 colunas):
+                    O arquivo deve ter <strong>15 colunas</strong>, nesta ordem — exatamente os campos da coleção <strong>buscapac53_pacientes</strong>. A linha de cabeçalho é opcional.
                   </p>
-                  <div className="flex flex-wrap gap-2">
-                    {['Unidade', 'Equipe', 'Microárea', 'CNS', 'Nome', 'Mãe', 'Últ. Atualização', 'Situação', 'Sexo', 'Nascimento', 'Tipo Logr.', 'Logradouro', 'CEP', 'Bairro', 'CPF'].map((col, i) => (
-                      <span key={i} className="text-[10px] bg-slate-50 border border-slate-200 px-2 py-1 rounded text-slate-500 font-medium">
-                        {col}
-                      </span>
+                  <ol className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5">
+                    {[
+                      'NOME_UNIDADE_DE_SAUDE',
+                      'NOME_EQUIPE_DE_SAUDE',
+                      'CODIGO_MICROAREA',
+                      'N_CNS_DA_PESSOA_CADASTRADA',
+                      'NOME_DA_PESSOA_CADASTRADA',
+                      'NOME_DA_MAE_PESSOA_CADASTRADA',
+                      'DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO',
+                      'SITUACAO_USUARIO',
+                      'SEXO',
+                      'DATA_DE_NASCIMENTO',
+                      'TIPO_DE_LOGRADOURO',
+                      'LOGRADOURO',
+                      'CEP_LOGRADOURO',
+                      'BAIRRO_DE_MORADIA',
+                      'N_CPF'
+                    ].map((campo, i) => (
+                      <li key={campo} className="flex items-start gap-2 min-w-0">
+                        <span className="w-4 h-4 mt-[1px] rounded bg-blue-50 text-blue-600 text-[8px] font-black flex items-center justify-center shrink-0">
+                          {i + 1}
+                        </span>
+                        <span className="text-[9px] font-mono font-bold text-slate-600 break-all leading-tight">
+                          {campo}
+                        </span>
+                      </li>
                     ))}
-                  </div>
+                  </ol>
                 </div>
               </div>
               <div className="flex gap-4">

@@ -6,6 +6,8 @@ import SettingsPage from './components/SettingsPage';
 import { DataService, formatCompetencia } from './services/DataService';
 
 const AUTH_KEY = 'buscapac_auth';
+// Tela atual persistida: sem isso um F5 nas Configurações volta para a busca.
+const VIEW_KEY = 'buscapac_view';
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
@@ -15,7 +17,12 @@ export default function App() {
   const [loginError, setLoginError] = useState('');
   const [showPass, setShowPass] = useState(false);
 
-  const [view, setView] = useState<'search' | 'settings'>('search');
+  // Restaura a última tela visitada (padrão: busca). Só reabre Configurações se
+  // a sessão já estava ativa, para não pular o acesso restrito.
+  const [view, setView] = useState<'search' | 'settings'>(() => {
+    const authenticated = localStorage.getItem(AUTH_KEY) === 'true';
+    return authenticated && localStorage.getItem(VIEW_KEY) === 'settings' ? 'settings' : 'search';
+  });
   const [showLogin, setShowLogin] = useState(false);
   const [loginForm, setLoginForm] = useState({ user: '', pass: '' });
   const [lastUpdate, setLastUpdate] = useState<string | null>(DataService.getLastUpdate());
@@ -31,6 +38,11 @@ export default function App() {
       });
     }
   }, [isAuthenticated]);
+
+  // Grava a tela atual para sobreviver ao F5 (login, logout e navegação passam por aqui).
+  useEffect(() => {
+    localStorage.setItem(VIEW_KEY, view);
+  }, [view]);
 
   const handleGlobalLogin = (e: React.FormEvent) => {
     e.preventDefault();

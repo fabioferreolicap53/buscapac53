@@ -226,7 +226,7 @@ export default function SearchModule() {
                   ? "DIGITE O NOME DO PACIENTE..."
                   : activeTab === 'cns'
                     ? "DIGITE O NÚMERO DO CNS..."
-                    : "DIGITE O CPF (000.000.000-00)..."
+                    : "DIGITE O CPF (00000000000)..."
               }
               className="w-full bg-transparent border-none focus:ring-0 focus:outline-none outline-none text-slate-800 placeholder:text-slate-300 font-black text-sm sm:text-base tracking-tight uppercase tabular-nums"
             />
