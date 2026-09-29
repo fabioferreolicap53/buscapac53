@@ -46,6 +46,19 @@ export default function SearchModule() {
     return patient.id || patient.N_CNS_DA_PESSOA_CADASTRADA || `${patient.NOME_DA_PESSOA_CADASTRADA}-${patient.DATA_DE_NASCIMENTO}`;
   };
 
+  /** Corrige valores legados da coluna SITUACAO_USUARIO vindos do CSV. */
+  const normalizarSituacao = (valor?: string): string => {
+    const v = (valor || '').trim().toUpperCase();
+    const mapa: Record<string, string> = {
+      'MUDOUSE AREA':        'MUDOU-SE DE ÁREA',
+      'MUDOUSE MUNICAPIO':   'MUDOU-SE DE MUNICÍPIO',
+      'ABITO':               'ÓBITO',
+      'RECUSASE':            'RECUSA-SE',
+      'RESIDENTE OUTRO MUNICAPIO': 'RESIDENTE EM OUTRO MUNICÍPIO',
+    };
+    return mapa[v] || valor || 'Ativo';
+  };
+
   const mergePatients = (...groups: PatientData[][]) => {
     const merged = new Map<string, PatientData>();
 
@@ -301,7 +314,7 @@ export default function SearchModule() {
                     <div className="flex items-center gap-4">
                       <div className="flex items-center gap-2 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-100">
                         <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                        <span className="text-[10px] font-black text-emerald-700 tracking-widest uppercase">{patient.SITUACAO_USUARIO || 'Ativo'}</span>
+                        <span className="text-[10px] font-black text-emerald-700 tracking-widest uppercase">{normalizarSituacao(patient.SITUACAO_USUARIO)}</span>
                       </div>
                     </div>
 
