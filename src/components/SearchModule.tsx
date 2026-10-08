@@ -1,4 +1,4 @@
-import { User, IdCard, ArrowRight, MapPin, Calendar, Heart, Shield, Clock, X, Search, Users, Activity, Fingerprint, CheckCircle2, AlertTriangle, Copy, Check } from 'lucide-react';
+import { User, IdCard, ArrowRight, MapPin, Calendar, Heart, Shield, Clock, X, Search, Users, Activity, Fingerprint, CheckCircle2, AlertTriangle, Copy, Check, Palette } from 'lucide-react';
 import { useState } from 'react';
 import { DataService, PatientData } from '../services/DataService';
 import { normalizeString } from '../utils/stringUtils';
@@ -445,6 +445,18 @@ export default function SearchModule() {
                             <p className="text-[9px] font-black uppercase tracking-[0.15em] text-slate-400 mb-0.5">Última Atualização</p>
                             <p className={`text-xs font-black ${patient.DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO ? 'text-slate-800' : 'text-slate-300'}`}>
                               {patient.DATA_ULTIMA_ATUALIZACAO_DO_CADASTRO || '—'}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-4 p-3 rounded-2xl bg-white border border-slate-100 shadow-sm hover:shadow-md hover:border-rose-100 transition-all group/item">
+                          <div className="w-10 h-10 shrink-0 rounded-xl bg-rose-50 flex items-center justify-center text-rose-500 border border-rose-100/50">
+                            <Palette size={18} strokeWidth={2.5} />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-[9px] font-black uppercase tracking-[0.15em] text-slate-400 mb-0.5">Raça/Cor</p>
+                            <p className={`text-xs font-black uppercase truncate ${patient.RACA_COR ? 'text-slate-800' : 'text-slate-300'}`}>
+                              {patient.RACA_COR || '—'}
                             </p>
                           </div>
                         </div>
