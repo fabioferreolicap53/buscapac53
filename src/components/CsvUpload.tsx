@@ -30,6 +30,7 @@ const CAMPOS_PACIENTE: string[] = [
   'CEP_LOGRADOURO',
   'BAIRRO_DE_MORADIA',
   'N_CPF',
+  'RACA_COR',
 ];
 
 // Cabeçalhos alternativos aceitos (comparados após normalizeString).
@@ -49,6 +50,7 @@ const ALIASES_CABECALHO: Record<string, string[]> = {
   CEP_LOGRADOURO: ['CEP', 'CEP DO LOGRADOURO'],
   BAIRRO_DE_MORADIA: ['BAIRRO', 'BAIRRO DE MORADIA'],
   N_CPF: ['CPF', 'CPF DO USUARIO', 'NUMERO DO CPF', 'N_CPF'],
+  RACA_COR: ['RACA', 'RACA COR', 'COR DA PELE', 'RACA/COR', 'ETNIA'],
 };
 
 const MIN_CAMPOS_CABECALHO = 8;

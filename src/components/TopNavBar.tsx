@@ -4,9 +4,11 @@ import { useState } from 'react';
 interface TopNavBarProps {
   onSettingsClick: () => void;
   onLogoutClick: () => void;
+  // Apenas o role 'admin' enxerga o atalho de Configurações.
+  isAdmin?: boolean;
 }
 
-export default function TopNavBar({ onSettingsClick, onLogoutClick }: TopNavBarProps) {
+export default function TopNavBar({ onSettingsClick, onLogoutClick, isAdmin = false }: TopNavBarProps) {
   return (
     <header className="bg-[#001f3f] border-b border-white/5 fixed top-0 z-50 w-full font-manrope antialiased shadow-lg shadow-blue-900/10 backdrop-blur-md">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -21,13 +23,15 @@ export default function TopNavBar({ onSettingsClick, onLogoutClick }: TopNavBarP
           </div>
           
           <div className="flex items-center gap-2 sm:gap-4">
-            <button 
-              onClick={onSettingsClick}
-              className="p-2 text-white/60 hover:text-white transition-colors rounded-lg hover:bg-white/10 shrink-0 group/nav"
-              title="Configurações"
-            >
-              <Settings size={20} className="sm:size-5 group-hover/nav:rotate-90 transition-transform duration-500" />
-            </button>
+            {isAdmin && (
+              <button 
+                onClick={onSettingsClick}
+                className="p-2 text-white/60 hover:text-white transition-colors rounded-lg hover:bg-white/10 shrink-0 group/nav"
+                title="Configurações"
+              >
+                <Settings size={20} className="sm:size-5 group-hover/nav:rotate-90 transition-transform duration-500" />
+              </button>
+            )}
             <button 
               onClick={onLogoutClick}
               className="p-2 text-white/60 hover:text-red-400 transition-colors rounded-lg hover:bg-red-500/10 shrink-0 group/nav"

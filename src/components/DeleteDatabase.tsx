@@ -7,9 +7,10 @@ interface DeleteDatabaseProps {
 }
 
 type DeleteStatus = 'idle' | 'confirm' | 'deleting' | 'finished' | 'error';
-// 'rebuild' = limpeza atômica (derruba a coleção e recria vazia com o mesmo id);
-// 'delete'  = exclusão em lotes (processo do .MD), usada como rede de segurança.
-type DeleteStage = 'auth' | 'rebuild' | 'delete';
+// 'backend' = exclusão em massa no servidor (hook /api/buscapac53/delete-all,
+//             um único DELETE FROM + sync de CNS);
+// 'delete'  = exclusão em lotes, usada como rede de segurança se o hook falhar.
+type DeleteStage = 'auth' | 'backend' | 'delete';
 type DeleteControl = 'running' | 'paused';
 
 interface DeleteSummary {
@@ -150,12 +151,11 @@ export default function DeleteDatabase({ onSuccess }: DeleteDatabaseProps) {
       await DataService.authenticate();
       if (!isCurrentRun()) return;
 
-      // --- Caminho principal: limpeza atômica ---
-      // Derruba a coleção e recria vazia com o mesmo id (DataService).
-      // É instantâneo no SQLite para o tamanho da tabela, enquanto o antigo
-      // DELETE /truncate estourava o tempo do cliente e o servidor fazia
-      // rollback — motivo de "rodar até o fim e a base continuar cheia".
-      setStage('rebuild');
+      // --- Caminho principal: exclusão em massa no backend ---
+      // Chama o hook exclusivo (pb_hooks/buscapac53.pb.js), que preserva o
+      // vínculo pela chave CNS e apaga tudo num único DELETE FROM (uma
+      // transação). Rápido e devolve o total removido já contado no servidor.
+      setStage('backend');
       const initialCount = await DataService.countPatients();
       if (!isCurrentRun()) return;
 
@@ -163,26 +163,29 @@ export default function DeleteDatabase({ onSuccess }: DeleteDatabaseProps) {
       setProgress({ removed: 0, total: initialCount, errors: 0 });
 
       let cleared = false;
+      let removedFromBackend = 0;
       try {
-        await DataService.truncateCollection();
+        const result = await DataService.deleteAllPatients();
+        removedFromBackend = result.removed;
         // Confere no servidor: se a contagem zerou, acabou — sem loop.
         const countAfterClear = await DataService.countPatients();
         if (!isCurrentRun()) return;
         cleared = countAfterClear === 0;
         if (!cleared) {
-          console.warn(`Limpeza atômica deixou ${countAfterClear} registros. Caindo para exclusão em lotes.`);
+          console.warn(`Exclusão no backend deixou ${countAfterClear} registros. Caindo para exclusão em lotes.`);
         }
       } catch (error) {
-        console.warn('Limpeza atômica indisponível. Caindo para exclusão em lotes.', error);
+        console.warn('Exclusão no backend indisponível. Caindo para exclusão em lotes.', error);
       }
 
       if (!isCurrentRun()) return;
 
       if (cleared) {
-        metricsRef.current.removed = initialCount;
-        setProgress({ removed: initialCount, total: initialCount, errors: 0 });
+        const finalRemoved = removedFromBackend > 0 ? removedFromBackend : initialCount;
+        metricsRef.current.removed = finalRemoved;
+        setProgress({ removed: finalRemoved, total: Math.max(initialCount, finalRemoved), errors: 0 });
         setSummary({
-          removed: initialCount,
+          removed: finalRemoved,
           elapsedSec: Math.floor((Date.now() - startTimeRef.current) / 1000),
           errors: 0,
           cancelled: false
@@ -358,9 +361,10 @@ export default function DeleteDatabase({ onSuccess }: DeleteDatabaseProps) {
             Excluir Base de Pacientes
           </h3>
           <p className="text-xs text-slate-500 mb-6 leading-relaxed">
-            Derruba a coleção e recria vazia com a mesma estrutura (campos, índices e regras),
-            sem perder as relações existentes. Se isso não for possível, cai automaticamente
-            para a exclusão em lotes de {DELETE_LOT_SIZE}, com pausa, cronômetro e métricas.
+            Apaga todos os registros direto no servidor por um hook exclusivo
+            (rota /api/buscapac53/delete-all), preservando o vínculo pela chave CNS num
+            único comando. Se o hook não responder, cai automaticamente para a exclusão
+            em lotes de {DELETE_LOT_SIZE}, com pausa, cronômetro e métricas.
             A ação é irreversível e não há backup automático.
           </p>
 
@@ -401,19 +405,19 @@ export default function DeleteDatabase({ onSuccess }: DeleteDatabaseProps) {
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
               {stage === 'auth'
                 ? 'Autenticando no servidor'
-                : stage === 'rebuild'
-                  ? 'Derrubando e recriando a coleção'
+                : stage === 'backend'
+                  ? 'Excluindo no servidor (hook buscapac53)'
                   : `Apagando em lotes de ${DELETE_LOT_SIZE} registros`}
             </p>
-            <p className="text-sm font-black text-slate-900">{stage === 'rebuild' ? '...' : `${percent}%`}</p>
+            <p className="text-sm font-black text-slate-900">{stage === 'backend' ? '...' : `${percent}%`}</p>
           </div>
 
           <div className="w-full h-3 bg-rose-100 rounded-full overflow-hidden mb-4">
             <div
               className={`h-full bg-gradient-to-r from-rose-500 to-rose-700 ${
-                stage === 'rebuild' ? 'animate-pulse w-full' : 'transition-all duration-300'
+                stage === 'backend' ? 'animate-pulse w-full' : 'transition-all duration-300'
               }`}
-              style={stage === 'rebuild' ? undefined : { width: `${stage === 'delete' && progress.total > 0 ? percent : 4}%` }}
+              style={stage === 'backend' ? undefined : { width: `${stage === 'delete' && progress.total > 0 ? percent : 4}%` }}
             />
           </div>
 
@@ -433,8 +437,8 @@ export default function DeleteDatabase({ onSuccess }: DeleteDatabaseProps) {
           <p className="text-xs text-slate-500 leading-relaxed mb-6">
             {stage === 'auth'
               ? 'Conectando como superuser (1x por execução). Se o servidor não responder, o motivo aparece aqui em até 30s.'
-              : stage === 'rebuild'
-                ? 'A coleção é derrubada e recriada vazia, preservando campos, índices e regras. Numa base grande isso leva alguns minutos — acompanhe o cronômetro. Se essa etapa falhar, o sistema cai sozinho para a exclusão em lotes.'
+              : stage === 'backend'
+                ? 'O servidor apaga todos os registros da coleção num único comando, preservando o vínculo pela chave CNS. Se essa etapa falhar, o sistema cai sozinho para a exclusão em lotes.'
                 : 'Não feche esta janela. Os números atualizam a cada lote concluído.'}
           </p>
 
@@ -455,7 +459,7 @@ export default function DeleteDatabase({ onSuccess }: DeleteDatabaseProps) {
             </div>
           )}
 
-          {stage === 'rebuild' && (
+          {stage === 'backend' && (
             <p className="text-[10px] text-slate-400 font-bold text-center">
               Aguarde — o comando já foi enviado ao servidor e não pode ser cancelado.
             </p>

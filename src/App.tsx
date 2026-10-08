@@ -6,13 +6,39 @@ import SettingsPage from './components/SettingsPage';
 import { DataService, formatCompetencia } from './services/DataService';
 
 const AUTH_KEY = 'buscapac_auth';
+// Papel do usuário logado. Só 'admin' acessa a página de Configurações
+// (é lá que fica a exclusão total da base).
+const ROLE_KEY = 'buscapac_role';
 // Tela atual persistida: sem isso um F5 nas Configurações volta para a busca.
 const VIEW_KEY = 'buscapac_view';
+
+type UserRole = 'admin' | 'user';
+
+// Contas do sistema. Apenas a conta admin abre Configurações e, com isso,
+// a exclusão da base (processo descrito em IMPLEMENTACAO_EXCLUSAO_POCKETBASE.md).
+const USERS: Record<string, { password: string; role: UserRole }> = {
+  'fabioferreoli.cap53@gmail.com': { password: '@Cap5364125', role: 'admin' },
+  'daps.cap53@gmail.com': { password: 'daps2022', role: 'user' },
+  'demandas.gabinete.cap5.3@gmail.com': { password: 'BUSCAPAC@assessoria#2026&', role: 'user' },
+  'ouvidoria.cap53@gmail.com': { password: 'ouvidoria.buscapac53', role: 'user' },
+  'nir.cap53@gmail.com': { password: 'nir.buscapac53', role: 'user' },
+};
+
+// Valida as credenciais e devolve o papel ('admin'/'user') ou null se inválidas.
+const authenticateUser = (user: string, pass: string): UserRole | null => {
+  const account = USERS[user.trim().toLowerCase()];
+  return account && account.password === pass ? account.role : null;
+};
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
     return localStorage.getItem(AUTH_KEY) === 'true';
   });
+  const [role, setRole] = useState<UserRole | null>(() => {
+    const stored = localStorage.getItem(ROLE_KEY);
+    return stored === 'admin' || stored === 'user' ? stored : null;
+  });
+  const isAdmin = role === 'admin';
   const [globalLoginForm, setGlobalLoginForm] = useState({ user: '', pass: '' });
   const [loginError, setLoginError] = useState('');
   const [showPass, setShowPass] = useState(false);
@@ -21,7 +47,10 @@ export default function App() {
   // a sessão já estava ativa, para não pular o acesso restrito.
   const [view, setView] = useState<'search' | 'settings'>(() => {
     const authenticated = localStorage.getItem(AUTH_KEY) === 'true';
-    return authenticated && localStorage.getItem(VIEW_KEY) === 'settings' ? 'settings' : 'search';
+    const storedRole = localStorage.getItem(ROLE_KEY);
+    return authenticated && storedRole === 'admin' && localStorage.getItem(VIEW_KEY) === 'settings'
+      ? 'settings'
+      : 'search';
   });
   const [showLogin, setShowLogin] = useState(false);
   const [loginForm, setLoginForm] = useState({ user: '', pass: '' });
@@ -47,15 +76,13 @@ export default function App() {
   const handleGlobalLogin = (e: React.FormEvent) => {
     e.preventDefault();
     const { user, pass } = globalLoginForm;
-    const isValid = 
-      (user === 'daps.cap53@gmail.com' && pass === 'daps2022') ||
-      (user === 'demandas.gabinete.cap5.3@gmail.com' && pass === 'BUSCAPAC@assessoria#2026&') ||
-      (user === 'ouvidoria.cap53@gmail.com' && pass === 'ouvidoria.buscapac53') ||
-      (user === 'nir.cap53@gmail.com' && pass === 'nir.buscapac53');
+    const userRole = authenticateUser(user, pass);
 
-    if (isValid) {
+    if (userRole) {
       setIsAuthenticated(true);
+      setRole(userRole);
       localStorage.setItem(AUTH_KEY, 'true');
+      localStorage.setItem(ROLE_KEY, userRole);
       setLoginError('');
       setGlobalLoginForm({ user: '', pass: '' });
     } else {
@@ -65,7 +92,9 @@ export default function App() {
 
   const handleLogout = () => {
     setIsAuthenticated(false);
+    setRole(null);
     localStorage.removeItem(AUTH_KEY);
+    localStorage.removeItem(ROLE_KEY);
     setView('search');
     setShowLogin(false);
   };
@@ -73,19 +102,20 @@ export default function App() {
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     const { user, pass } = loginForm;
-    const isValid = 
-      (user === 'daps.cap53@gmail.com' && pass === 'daps2022') ||
-      (user === 'demandas.gabinete.cap5.3@gmail.com' && pass === 'BUSCAPAC@assessoria#2026&') ||
-      (user === 'ouvidoria.cap53@gmail.com' && pass === 'ouvidoria.buscapac53') ||
-      (user === 'nir.cap53@gmail.com' && pass === 'nir.buscapac53');
+    const userRole = authenticateUser(user, pass);
 
-    if (isValid) {
-      setShowLogin(false);
-      setView('settings');
-      setLoginForm({ user: '', pass: '' });
-    } else {
-      alert('Acesso negado.');
+    // A página de Configurações (upload, competência, histórico e exclusão da
+    // base) é exclusiva do role 'admin'.
+    if (userRole !== 'admin') {
+      alert('Acesso negado. Apenas administradores acessam as Configurações.');
+      return;
     }
+
+    setRole(userRole);
+    localStorage.setItem(ROLE_KEY, userRole);
+    setShowLogin(false);
+    setView('settings');
+    setLoginForm({ user: '', pass: '' });
   };
 
   if (!isAuthenticated) {
@@ -190,6 +220,7 @@ export default function App() {
       <TopNavBar 
         onSettingsClick={() => setShowLogin(true)} 
         onLogoutClick={handleLogout}
+        isAdmin={isAdmin}
       />
 
       {showLogin && (
@@ -246,7 +277,7 @@ export default function App() {
 
       <main className="pt-24 sm:pt-32 pb-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
-          {view === 'search' ? (
+          {view === 'search' || !isAdmin ? (
             <div className="flex flex-col items-center justify-center min-h-[500px] sm:min-h-[600px]">
               {/* Search Header - Responsive */}
               <div className="text-center mb-10 sm:mb-16 max-w-2xl relative group/header w-full">

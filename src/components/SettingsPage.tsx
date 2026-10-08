@@ -342,7 +342,7 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
                 <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold shrink-0">2</div>
                 <div>
                   <p className="text-sm text-slate-600 leading-relaxed mb-3">
-                    O arquivo deve ter <strong>15 colunas</strong>, nesta ordem — exatamente os campos da coleção <strong>buscapac53_pacientes</strong>. A linha de cabeçalho é opcional.
+                    O arquivo deve ter <strong>16 colunas</strong>, nesta ordem — exatamente os campos da coleção <strong>buscapac53_pacientes</strong>. A linha de cabeçalho é opcional.
                   </p>
                   <ol className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5">
                     {[
@@ -360,7 +360,8 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
                       'LOGRADOURO',
                       'CEP_LOGRADOURO',
                       'BAIRRO_DE_MORADIA',
-                      'N_CPF'
+                      'N_CPF',
+                      'RACA_COR'
                     ].map((campo, i) => (
                       <li key={campo} className="flex items-start gap-2 min-w-0">
                         <span className="w-4 h-4 mt-[1px] rounded bg-blue-50 text-blue-600 text-[8px] font-black flex items-center justify-center shrink-0">

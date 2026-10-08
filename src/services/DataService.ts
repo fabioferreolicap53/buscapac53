@@ -18,6 +18,7 @@ export interface PatientData {
   CEP_LOGRADOURO: string;
   BAIRRO_DE_MORADIA: string;
   N_CPF: string;
+  RACA_COR: string;
 }
 
 export interface UploadHistory {
@@ -128,6 +129,9 @@ const PATIENTS_COLLECTION = 'buscapac53_pacientes';
 // importação, que funciona. Lote de 100, pausa/intermissão no meio.
 const DELETE_REQUEST_TIMEOUT_MS = 60000;
 export const DELETE_LOT_SIZE = 100;
+// Rota de exclusão em massa servida pelo hook JSVM exclusivo deste app
+// (pb_hooks/buscapac53.pb.js): sync de CNS + DELETE FROM em 1 sentença SQL.
+const DELETE_ALL_ROUTE = '/api/buscapac53/delete-all';
 
 const STORAGE_KEY = 'buscapac_db';
 const UPDATE_KEY = 'buscapac_last_update';
@@ -327,6 +331,50 @@ const buildCollectionRebuildPayload = (collection: any) => {
   };
 };
 
+// Garante o campo RACA_COR na coleção de pacientes. A coluna pode já ter sido
+// criada manualmente no PocketBase; aqui só confirmamos e criamos se faltar.
+// Roda 1x por sessão e nunca bloqueia o fluxo (falha é apenas avisada).
+let racaCorEnsured = false;
+const ensurePatientsRacaCorField = async (): Promise<void> => {
+  if (racaCorEnsured) return;
+
+  const fieldName = 'RACA_COR';
+  const response = await apiRequest(
+    `/api/collections/${encodeURIComponent(PATIENTS_COLLECTION)}`,
+    { method: 'GET' },
+    REMOTE_TIMEOUT_MS,
+    0
+  );
+
+  if (!response.ok) return;
+
+  const collection = await response.json();
+  // v0.23+ usa "fields"; versões antigas usam "schema".
+  const usesFieldsKey = Array.isArray(collection.fields);
+  const sourceFields: any[] = usesFieldsKey ? collection.fields : (collection.schema || []);
+
+  const jaExiste = sourceFields.some(
+    (campo) => String(campo?.name || '').toUpperCase() === fieldName
+  );
+  if (jaExiste) {
+    racaCorEnsured = true;
+    return;
+  }
+
+  const newFields = [...sourceFields, { name: fieldName, type: 'text', required: false }];
+  const patch = await apiRequest(
+    `/api/collections/${encodeURIComponent(collection.id)}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(usesFieldsKey ? { fields: newFields } : { schema: newFields })
+    },
+    UPLOAD_REQUEST_TIMEOUT_MS,
+    0
+  );
+
+  if (patch.ok) racaCorEnsured = true;
+};
+
 // Garante que a coleção de configuração existe. Só o superuser pode criá-la,
 // então isso roda depois do authenticate(). Se já existir, não faz nada.
 const ensureConfigCollection = async (): Promise<void> => {
@@ -484,6 +532,11 @@ export const DataService = {
       const auth = await response.json();
       pb.authStore.save(auth.token, auth.record);
       superuserSession = true;
+      try {
+        await ensurePatientsRacaCorField();
+      } catch (error) {
+        console.warn('Não foi possível garantir o campo RACA_COR na coleção.', error);
+      }
       return pb.authStore.model;
     } catch (error) {
       console.error('Falha na autenticação com o PocketBase:', error);
@@ -799,6 +852,37 @@ export const DataService = {
     }
 
     return { removedCount: -1 }; // -1 indica limpeza atômica (não exige contagem)
+  },
+
+  // --- Exclusão em massa via backend (hook pb_hooks/buscapac53.pb.js) ---
+  // O hook faz o sync de CNS e um único DELETE FROM na coleção, numa única
+  // transação. Muito mais rápido que N requisições HTTP e libera o lock do
+  // SQLite na hora. Devolve o total removido contado no servidor.
+  deleteAllPatients: async (): Promise<{ removed: number }> => {
+    await DataService.authenticate();
+
+    const response = await withTimeout(
+      fetch(pb.buildUrl(DELETE_ALL_ROUTE), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(pb.authStore.token ? { Authorization: pb.authStore.token } : {})
+        },
+        body: JSON.stringify({ collection: PATIENTS_COLLECTION }),
+        signal: AbortSignal.timeout(REBUILD_DROP_TIMEOUT_MS + 5000)
+      }),
+      REBUILD_DROP_TIMEOUT_MS,
+      'Timeout ao excluir a base no backend (hook buscapac53).'
+    );
+
+    if (!response.ok) {
+      throw new Error(
+        `Falha na exclusão via backend (${response.status}): ${await readErrorBody(response)}`
+      );
+    }
+
+    const data = await response.json().catch(() => ({} as { removed?: number }));
+    return { removed: Number(data?.removed) || 0 };
   },
 
   // --- Exclusão da base (count) ---
