@@ -132,6 +132,10 @@ export const DELETE_LOT_SIZE = 100;
 // Rota de exclusão em massa servida pelo hook JSVM exclusivo deste app
 // (pb_hooks/buscapac53.pb.js): sync de CNS + DELETE FROM em 1 sentença SQL.
 const DELETE_ALL_ROUTE = '/api/buscapac53/delete-all';
+// Rota de importação em massa do mesmo hook: INSERT multi-linha por lote
+// (1 transação atômica). Muito mais rápido que 1 request por registro.
+const IMPORT_ALL_ROUTE = '/api/buscapac53/import-pacientes';
+const IMPORT_REQUEST_TIMEOUT_MS = 90000;
 
 const STORAGE_KEY = 'buscapac_db';
 const UPDATE_KEY = 'buscapac_last_update';
@@ -883,6 +887,41 @@ export const DataService = {
 
     const data = await response.json().catch(() => ({} as { removed?: number }));
     return { removed: Number(data?.removed) || 0 };
+  },
+
+  // --- Importação em massa via backend (hook pb_hooks/buscapac53.pb.js) ---
+  // Envia um lote de registros (objetos já com os nomes de campo da coleção)
+  // para o hook, que monta UM INSERT multi-linha (1 transação atômica). O
+  // primeiro lote usa mode 'replace' (zera a base preservando o vínculo por
+  // CNS); os lotes seguintes usam 'append'.
+  importPatientsBatch: async (
+    records: Record<string, string>[],
+    mode: 'append' | 'replace' = 'append'
+  ): Promise<{ imported: number }> => {
+    await DataService.authenticate();
+
+    const response = await withTimeout(
+      fetch(pb.buildUrl(IMPORT_ALL_ROUTE), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(pb.authStore.token ? { Authorization: pb.authStore.token } : {})
+        },
+        body: JSON.stringify({ records, mode }),
+        signal: AbortSignal.timeout(IMPORT_REQUEST_TIMEOUT_MS + 5000)
+      }),
+      IMPORT_REQUEST_TIMEOUT_MS,
+      'Timeout ao importar o lote no backend (hook buscapac53).'
+    );
+
+    if (!response.ok) {
+      throw new Error(
+        `Falha na importação via backend (${response.status}): ${await readErrorBody(response)}`
+      );
+    }
+
+    const data = await response.json().catch(() => ({} as { imported?: number }));
+    return { imported: Number(data?.imported) || 0 };
   },
 
   // --- Exclusão da base (count) ---

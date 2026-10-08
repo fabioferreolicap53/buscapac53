@@ -335,7 +335,7 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
               <div className="flex gap-4">
                 <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold shrink-0">1</div>
                 <p className="text-sm text-slate-600 leading-relaxed">
-                  O arquivo deve estar no formato <strong>CSV (Comma Separated Values)</strong>. Use vírgulas como delimitador.
+                  O arquivo deve estar no formato <strong>CSV (Comma Separated Values)</strong>, separado por <strong>ponto e vírgula (;)</strong>. Vírgulas também são aceitas automaticamente.
                 </p>
               </div>
               <div className="flex gap-4">
